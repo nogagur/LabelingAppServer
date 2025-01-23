@@ -1,0 +1,97 @@
+-- Table: TiktokUsers
+CREATE TABLE TiktokUsers (
+    id BIGINT PRIMARY KEY,
+    username VARCHAR(100),
+    nickname VARCHAR(100),
+    description TEXT,
+    region VARCHAR(50),
+    video_num INTEGER DEFAULT 0,
+    fans INTEGER DEFAULT 0,
+    following INTEGER DEFAULT 0,
+    friends INTEGER DEFAULT 0,
+    likes INTEGER DEFAULT 0,
+    thumbnail TEXT
+    pre_classification INTEGER REFERENCES Classification(id) ON DELETE SET NULL
+);
+
+-- Table: Hashtags
+CREATE TABLE Hashtags (
+    id SERIAL PRIMARY KEY,
+    content VARCHAR(100) UNIQUE -- Unique hashtags for optimization
+);
+
+-- Table: Music
+CREATE TABLE Music (
+    id INTEGER PRIMARY KEY,
+    name VARCHAR(150) NOT NULL,
+    author VARCHAR(100),
+    play_link TEXT
+);
+
+
+-- Table: VideosMeta
+CREATE TABLE VideosMeta (
+    id BIGINT PRIMARY KEY,
+    description TEXT,
+    user_id BIGINT NOT NULL REFERENCES TiktokUsers(id) ON DELETE CASCADE,
+    play_count INTEGER DEFAULT 0,
+    share_count INTEGER DEFAULT 0,
+    comment_count INTEGER DEFAULT 0,
+    created_at TIMESTAMP,
+    hashtags TEXT[], -- Array of TEXT for hashtags
+    duration INTEGER, -- Duration in seconds
+    height INTEGER,
+    width INTEGER,
+    video_file TEXT, -- URL stored as TEXT
+    video_thumbnail TEXT, -- URL stored as TEXT
+    web_url TEXT, -- URL stored as TEXT
+    music_id INTEGER REFERENCES Music(id) ON DELETE SET NULL
+    );
+
+-- Table: Users
+CREATE TABLE Users (
+    id SERIAL PRIMARY KEY,
+    email VARCHAR(255) NOT NULL UNIQUE,
+    password VARCHAR(255) NOT NULL,
+    num_classified INTEGER DEFAULT 0,
+    num_left INTEGER DEFAULT 0,
+    is_pro BOOLEAN DEFAULT FALSE,
+    deadline DATE
+);
+
+-- Table: Features
+CREATE TABLE Features (
+    id SERIAL PRIMARY KEY,
+    title VARCHAR(100) NOT NULL UNIQUE
+);
+
+-- Table: Classification
+CREATE TABLE Classification (
+    id SERIAL PRIMARY KEY,
+    title VARCHAR(100) NOT NULL UNIQUE
+);
+
+-- Table: VideosClassification
+CREATE TABLE VideosClassification (
+    id SERIAL PRIMARY KEY,
+    video_id BIGINT NOT NULL REFERENCES VideosMeta(id) ON DELETE CASCADE,
+    classification INTEGER NOT NULL REFERENCES Classification(id) ON DELETE CASCADE,
+    classified_by INTEGER NOT NULL REFERENCES Users(id) ON DELETE CASCADE,
+    features INTEGER[] -- Array of Feature IDs
+);
+
+-- Relationships for Many-to-Many:
+
+-- VideosMeta <-> Hashtags (Many-to-Many)
+CREATE TABLE VideosMeta_Hashtags (
+    video_id BIGINT NOT NULL REFERENCES VideosMeta(id) ON DELETE CASCADE,
+    hashtag_id INTEGER NOT NULL REFERENCES Hashtags(id) ON DELETE CASCADE,
+    PRIMARY KEY (video_id, hashtag_id)
+);
+
+-- VideosClassification <-> Features (Many-to-Many)
+CREATE TABLE VideosClassification_Features (
+    classification_id INTEGER NOT NULL REFERENCES VideosClassification(id) ON DELETE CASCADE,
+    feature_id INTEGER NOT NULL REFERENCES Features(id) ON DELETE CASCADE,
+    PRIMARY KEY (classification_id, feature_id)
+);
