@@ -1,4 +1,6 @@
+import glob
 import json
+import os
 import re
 
 import psycopg2
@@ -11,7 +13,7 @@ DB_CONFIG = {
     "password": "root"
 }
 
-def insert_tiktok_data(data, pre_classification):
+def insert_tiktok_data(data, pre_class):
     """
     Inserts TikTok data into the PostgreSQL database.
     """
@@ -23,10 +25,10 @@ def insert_tiktok_data(data, pre_classification):
 
         # Insert each TikTok user into the TiktokUsers table
         for record in data:
-            if "note" in record and record["note"] == 'Profile is private':
+            if "note" in record and (record["note"] == 'Profile is private' or record['note'] == 'No videos found to match the date filter'):
                 continue
 
-            # insert_user(cur, record, pre_classification)
+            insert_user(cur, record, pre_class)
             insert_video(cur, record)
             print("Finished inserting data for video:", record["id"])
 
@@ -38,21 +40,6 @@ def insert_tiktok_data(data, pre_classification):
 
     except Exception as e:
         print("Error inserting data:", e)
-
-
-def insert_user(cur, user, pre_classification):
-    cur.execute("""
-                INSERT INTO TiktokUsers (
-                    id, username, nickname, description, region, video_num, fans, following, friends, likes, thumbnail, pre_classification
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (id) DO NOTHING
-            """, (
-        user["authorMeta"]["id"], user["authorMeta"]["name"], user["authorMeta"]["nickName"],
-        user["authorMeta"]["signature"],
-        user["authorMeta"]["region"], user["authorMeta"]["video"], user["authorMeta"]["fans"],
-        user["authorMeta"]["following"],
-        user["authorMeta"]["friends"], user["authorMeta"]["heart"], user["authorMeta"]["avatar"], pre_classification
-    ))
 
 def insert_hashtags(cur, hashtags):
     hashtag_ids = []
@@ -71,36 +58,115 @@ def insert_hashtags(cur, hashtags):
             hashtag_ids.append(cur.fetchone()[0])
     return hashtag_ids
 
-def insert_music(cur, music):
-    cur.execute("""
-                INSERT INTO Music (id, name, author, play_link)
-                VALUES (%s, %s, %s, %s)
-                ON CONFLICT (id) DO NOTHING
-            """, (
-        music["musicId"], music["musicName"], music["musicAuthor"], music['playUrl']
-    ))
+def insert_data(cur, table, data):
+    # Prepare the columns and values for the INSERT statement
+    columns = list(data.keys())
+    values = list(data.values())
 
+    # Filter out None values to let the database use default values
+    filtered_columns = [col for col, val in zip(columns, values) if val is not None]
+    filtered_values = [val for val in values if val is not None]
+
+    # Check if filtered data is empty after filtering None values
+    if not filtered_columns or not filtered_values:
+        return  # Nothing to insert
+
+    # Construct the SQL query dynamically
+    query = f"""
+        INSERT INTO {table} ({', '.join(filtered_columns)})
+        VALUES ({', '.join(['%s'] * len(filtered_values))})
+        ON CONFLICT (id) DO NOTHING
+    """
+
+    # Execute the query
+    cur.execute(query, filtered_values)
+
+def insert_user(cur, user, pre_classification):
+    user_data = {
+        "id": user["authorMeta"]["id"],
+        "username": user["authorMeta"]["name"],
+        "nickname": user["authorMeta"]["nickName"],
+        "description": user["authorMeta"]["signature"],
+        "region": user["authorMeta"]["region"],
+        "video_num": user["authorMeta"]["video"],
+        "fans": user["authorMeta"]["fans"],
+        "following": user["authorMeta"]["following"],
+        "friends": user["authorMeta"]["friends"],
+        "likes": user["authorMeta"]["heart"],
+        "thumbnail": user["authorMeta"]["avatar"],
+        "pre_classification": pre_classification
+    }
+    insert_data(cur, "TiktokUsers", user_data)
+
+def insert_hashtags(cur, hashtags):
+    hashtag_ids = []
+    for hashtag in hashtags:
+        query = """
+            INSERT INTO Hashtags (content)
+            VALUES (%s)
+            ON CONFLICT (content) DO NOTHING
+            RETURNING id
+        """
+        cur.execute(query, (hashtag["name"],))
+        result = cur.fetchone()  # Fetch the returned ID, if any
+        if result:
+            hashtag_ids.append(result[0])  # New ID returned from the INSERT
+        else:
+            # If no ID was returned, it means the hashtag already exists, so fetch its ID
+            cur.execute("SELECT id FROM Hashtags WHERE content = %s", (hashtag["name"],))
+            hashtag_ids.append(cur.fetchone()[0])
+    return hashtag_ids
+
+
+def insert_music(cur, music):
+    music_data = {
+        "id": music.get("musicId"),
+        "name": music.get("musicName"),
+        "author": music.get("musicAuthor"),
+        "play_link": music.get("playUrl")
+    }
+    insert_data(cur, "Music", music_data)
 
 def insert_video(cur, data):
     # Insert music data first
-    insert_music(cur, data["musicMeta"])
+    insert_music(cur, data.get("musicMeta", {}))
 
     # Insert hashtags and get their IDs
-    hashtag_ids = insert_hashtags(cur, data["hashtags"])
+    hashtag_ids = insert_hashtags(cur, data.get("hashtags", []))
 
-    # Insert video data
-    cur.execute("""
-                    INSERT INTO VideosMeta (
-                        id, description, user_id, play_count, share_count, comment_count, created_at, hashtags, duration, height, width, video_file, video_thumbnail, web_url, music_id
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (id) DO NOTHING
-                """, (
-        data["id"], data["text"], data["authorMeta"]["id"], data["playCount"], data["shareCount"],
-        data["commentCount"],
-        data["createTimeISO"], hashtag_ids, data["videoMeta"]["duration"], data["videoMeta"]["height"], data["videoMeta"]["width"], data["videoMeta"]["downloadAddr"],
-        data["videoMeta"]["coverUrl"], data["webVideoUrl"], data["musicMeta"]["musicId"]
-    ))
+    # Prepare video data
+    video_data = {
+        "id": data.get("id"),
+        "description": data.get("text"),
+        "user_id": data.get("authorMeta", {}).get("id"),
+        "play_count": data.get("playCount"),
+        "share_count": data.get("shareCount"),
+        "comment_count": data.get("commentCount"),
+        "created_at": data.get("createTimeISO"),
+        "duration": data.get("videoMeta", {}).get("duration"),
+        "height": data.get("videoMeta", {}).get("height"),
+        "width": data.get("videoMeta", {}).get("width"),
+        "video_file": data.get("videoMeta", {}).get("downloadAddr"),
+        "video_thumbnail": data.get("videoMeta", {}).get("coverUrl"),
+        "web_url": data.get("webVideoUrl"),
+        "music_id": data.get("musicMeta", {}).get("musicId")
+    }
 
+    # Check if "video_file" exists before inserting
+    if not video_data["video_file"]:
+        print(f"Skipping video {video_data['id']} due to missing video file.")
+        return
+
+    insert_data(cur, "VideosMeta", video_data)
+
+    # Insert records into VideosMeta_Hashtags table
+    for hashtag_id in hashtag_ids:
+        query = """
+                INSERT INTO VideosMeta_Hashtags (video_id, hashtag_id)
+                VALUES (%s, %s)
+                ON CONFLICT DO NOTHING
+            """
+        cur.execute(query, (video_data["id"], hashtag_id))
 
 def load_tiktok_json(file_path):
     """
@@ -109,20 +175,29 @@ def load_tiktok_json(file_path):
     with open(file_path, "r") as f:
         return json.load(f)
 
-def extract_group_number(filename):
-    groups = {'hamas': 1, 'fatah': 2, 'none': 3}
+def extract_group(filename):
     match = re.search(r'dataset_(hamas|fatah|none)', filename)
     if match:
-        group = match.group(1)
-        return groups[group]
-    return 0
+        return match.group(1)  # Return the group name directly
+    return 'unknown'
 
 if __name__ == "__main__":
-    # Path to the TikTok JSON file
-    tiktok_json_path = "../tiktok_data/dataset_hamas1after710_2025-01-21_08-43-34-953.json"
+    # Directory containing TikTok JSON files
+    tiktok_json_directory = "../tiktok_data/"
 
-    # Load and insert data
-    pre_classification = extract_group_number(tiktok_json_path)
-    tiktok_data = load_tiktok_json(tiktok_json_path)
-    # print(tiktok_data)
-    insert_tiktok_data(tiktok_data, pre_classification)
+    # Iterate through all JSON files in the directory
+    for file_path in glob.glob(os.path.join(tiktok_json_directory, "*.json")):
+        print(f"Processing file: {file_path}")
+
+        try:
+            # Extract pre_classification from the file name
+            pre_classification = extract_group(file_path)
+
+            # Load the JSON data from the file
+            tiktok_data = load_tiktok_json(file_path)
+
+            # Insert data into the database
+            insert_tiktok_data(tiktok_data, pre_classification)
+
+        except Exception as e:
+            print(f"Error processing file {file_path}: {e}")

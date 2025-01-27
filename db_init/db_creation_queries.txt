@@ -10,8 +10,8 @@ CREATE TABLE TiktokUsers (
     following INTEGER DEFAULT 0,
     friends INTEGER DEFAULT 0,
     likes INTEGER DEFAULT 0,
-    thumbnail TEXT
-    pre_classification INTEGER REFERENCES Classification(id) ON DELETE SET NULL
+    thumbnail TEXT,
+    pre_classification VARCHAR(50) -- Changed to VARCHAR(50) to match updated schema
 );
 
 -- Table: Hashtags
@@ -28,7 +28,6 @@ CREATE TABLE Music (
     play_link TEXT
 );
 
-
 -- Table: VideosMeta
 CREATE TABLE VideosMeta (
     id BIGINT PRIMARY KEY,
@@ -38,7 +37,6 @@ CREATE TABLE VideosMeta (
     share_count INTEGER DEFAULT 0,
     comment_count INTEGER DEFAULT 0,
     created_at TIMESTAMP,
-    hashtags TEXT[], -- Array of TEXT for hashtags
     duration INTEGER, -- Duration in seconds
     height INTEGER,
     width INTEGER,
@@ -46,7 +44,7 @@ CREATE TABLE VideosMeta (
     video_thumbnail TEXT, -- URL stored as TEXT
     web_url TEXT, -- URL stored as TEXT
     music_id INTEGER REFERENCES Music(id) ON DELETE SET NULL
-    );
+);
 
 -- Table: Users
 CREATE TABLE Users (
@@ -54,9 +52,12 @@ CREATE TABLE Users (
     email VARCHAR(255) NOT NULL UNIQUE,
     password VARCHAR(255) NOT NULL,
     num_classified INTEGER DEFAULT 0,
-    num_left INTEGER DEFAULT 0,
-    is_pro BOOLEAN DEFAULT FALSE,
-    deadline DATE
+    num_left INTEGER DEFAULT 0
+);
+
+-- Table: ProUsers
+CREATE TABLE ProUsers (
+    id INTEGER PRIMARY KEY REFERENCES Users(id) -- Foreign key to Users table
 );
 
 -- Table: Features
@@ -65,31 +66,22 @@ CREATE TABLE Features (
     title VARCHAR(100) NOT NULL UNIQUE
 );
 
--- Table: Classification
-CREATE TABLE Classification (
-    id SERIAL PRIMARY KEY,
-    title VARCHAR(100) NOT NULL UNIQUE
-);
-
 -- Table: VideosClassification
 CREATE TABLE VideosClassification (
     id SERIAL PRIMARY KEY,
     video_id BIGINT NOT NULL REFERENCES VideosMeta(id) ON DELETE CASCADE,
-    classification INTEGER NOT NULL REFERENCES Classification(id) ON DELETE CASCADE,
-    classified_by INTEGER NOT NULL REFERENCES Users(id) ON DELETE CASCADE,
-    features INTEGER[] -- Array of Feature IDs
+    classification VARCHAR(50) NOT NULL, -- Changed to VARCHAR(50) to match updated schema
+    classified_by INTEGER NOT NULL REFERENCES Users(id) ON DELETE CASCADE
 );
 
--- Relationships for Many-to-Many:
-
--- VideosMeta <-> Hashtags (Many-to-Many)
+-- Table: VideosMeta_Hashtags
 CREATE TABLE VideosMeta_Hashtags (
     video_id BIGINT NOT NULL REFERENCES VideosMeta(id) ON DELETE CASCADE,
     hashtag_id INTEGER NOT NULL REFERENCES Hashtags(id) ON DELETE CASCADE,
     PRIMARY KEY (video_id, hashtag_id)
 );
 
--- VideosClassification <-> Features (Many-to-Many)
+-- Table: VideosClassification_Features
 CREATE TABLE VideosClassification_Features (
     classification_id INTEGER NOT NULL REFERENCES VideosClassification(id) ON DELETE CASCADE,
     feature_id INTEGER NOT NULL REFERENCES Features(id) ON DELETE CASCADE,
