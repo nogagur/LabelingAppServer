@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.orm import declarative_base
 
 from credentials import *
-from models import Passcode, Tweet, Classification, Tweeter, ProBank ,Base
+from models import User, Tweet, Classification, Tweeter, ProBank ,Base
 
 
 class Singleton(type):
@@ -31,20 +31,20 @@ class DBAccess(metaclass=Singleton):
         with Session(self.engine) as session:
             passcode = generate_passcode(num_days)
             session.add(
-                Passcode(key=passcode.key, valid_until=passcode.valid_until, created=passcode.created, email=email))
+                User(key=passcode.key, valid_until=passcode.valid_until, created=passcode.created, email=email))
             session.commit()
         return passcode.key
 
     # A method that returns a passcode object.
     def get_passcode(self, key):
         with Session(self.engine) as session:
-            result = session.query(Passcode).filter(Passcode.key == key)
+            result = session.query(User).filter(User.key == key)
             return result.one_or_none()
 
     # A method that is used to activate the emails of the new users.
     def activate_passcode_by_email(self, email):
         with Session(self.engine) as session:
-            session.execute(update(Passcode).where(Passcode.email == email).values(activated=True))
+            session.execute(update(User).where(User.email == email).values(activated=True))
             session.commit()
 
     # This method is in charge of returning a tweet object.
@@ -305,7 +305,7 @@ class DBAccess(metaclass=Singleton):
     # This method returns the passcode of a desired email.
     def get_passcode_by_email(self, email):
         with Session(self.engine) as session:
-            return session.query(Passcode).filter(Passcode.email == email).one_or_none()
+            return session.query(User).filter(User.email == email).one_or_none()
 
     # This method return the number of tweets classified as positive, by a user.
     def get_num_positive_classifications(self, classifier):
@@ -363,7 +363,7 @@ class DBAccess(metaclass=Singleton):
     def get_time_left(self, classifier):
         with Session(self.engine) as session:
             current_date = datetime.now().date()
-            user_until = session.query(Passcode).filter(Passcode.key == classifier).first()
+            user_until = session.query(User).filter(User.key == classifier).first()
             if user_until is not None and user_until.valid_until is not None:
                 valid_until_date = user_until.valid_until
                 days_left = (valid_until_date - current_date).days
@@ -402,7 +402,7 @@ class DBAccess(metaclass=Singleton):
     # This method will check how many irrelevant tweets a specific tweeter has.
     def get_users(self):
         with Session(self.engine) as session:
-            return session.query(Passcode).filter(Passcode.activated == True).all()
+            return session.query(User).filter(User.activated == True).all()
     
     
     def get_total_classifications(self):
@@ -488,7 +488,7 @@ def preprocess_tweet(text: str) -> str:
 def generate_passcode(num_days):
     duration=timedelta(days=num_days)
     key = token_urlsafe(6)
-    token = Passcode(key=key, valid_until=datetime.now() + duration, created=datetime.now())
+    token = User(key=key, valid_until=datetime.now() + duration, created=datetime.now())
     return token
 
 

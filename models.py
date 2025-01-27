@@ -1,88 +1,142 @@
 from datetime import datetime
 
-from sqlalchemy import Column, Integer, String, Date, Boolean, ForeignKey
+from sqlalchemy import Column, Integer, String, Date, Boolean, ForeignKey, BigInteger, Text, DateTime
 from sqlalchemy.orm import declarative_base
 
 Base = declarative_base()
 
-
-class Passcode(Base):
-    __tablename__ = 'passcodes'
-    __table_args__ = {'schema': 'main'}
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    key = Column(String, unique=True)
-    valid_until = Column(Date)
-    created = Column(Date)
-    activated = Column(Boolean, default=False)
-    email = Column(String)
-    max_classifications = Column(Integer)
-    professional = Column(Boolean, default=False)
-
-    def __repr__(self):
-        return f"<Passcode(" \
-               f"id={self.id}, key={self.key}," \
-               f" valid_until={self.valid_until}," \
-               f" created={self.created}," \
-               f" activated={self.activated})," \
-               f" email={self.email})," \
-               f" max_classifications={self.max_classifications})>"
-    
-    
-    def is_valid(self, num_classifications):
-        current_date = datetime.now().date()
-        return (self.valid_until > current_date and
-                self.activated and
-                (self.max_classifications is None or num_classifications < self.max_classifications))
-
-
-class Tweeter(Base):
-    __tablename__ = 'tweeters'
-    __table_args__ = {'schema': 'main'}
-
-    username = Column(String, primary_key=True)
-    
-
-    def __repr__(self):
-        return f"<Tweeter(username={self.username})>"
-
-
-class Tweet(Base):
-    __tablename__ = 'tweets'
-    __table_args__ = {'schema': 'main'}
-
-    id = Column(String, primary_key=True)
-    tweeter = Column(ForeignKey(Tweeter.username))
-    content = Column(String)
-
-    def __repr__(self):
-        return f"<Tweet(id={self.id})>"
-
-
-class Classification(Base):
-    __tablename__ = 'classifications'
-    __table_args__ = {'schema': 'main'}
+# Represents a user in the database
+class User(Base):
+    __tablename__ = 'users'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    tweet = Column(ForeignKey(Tweet.id))
-    classifier = Column(ForeignKey(Passcode.key))
-    classification = Column(String)
-    features = Column(String, default="")
-    classified_at = Column(Date, default=datetime.now())
-    started_classification = Column(Date, default=datetime.now())
+    email = Column(String(255), unique=True, nullable=False)
+    password = Column(String(255), nullable=False)
+    num_classified = Column(Integer, default=0)
+    num_left = Column(Integer, default=0)
 
     def __repr__(self):
-        return f"<Classification(id={self.id}, tweet={self.tweet}, classifier={self.classifier}, classification={self.classification})>"
+        return f"<User(id={self.id}, email={self.email})>"
+    
+    
+    # def is_valid(self, num_classifications):
+    #     current_date = datetime.now().date()
+    #     return (self.valid_until > current_date and
+    #             self.activated and
+    #             (self.max_classifications is None or num_classifications < self.max_classifications))
 
+# Represents professional users (subclass of Users)
+class ProUser(Base):
+    __tablename__ = 'ProUsers'
 
-class ProBank(Base):
-    __tablename__ = 'probank'
-    __table_args__ = {'schema': 'main'}
+    id = Column(Integer, ForeignKey('Users.id'), primary_key=True)
+
+    def __repr__(self):
+        return f"<ProUser(id={self.id})>"
+
+# Represents features for classifying videos
+class Feature(Base):
+    __tablename__ = 'Features'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    tweet = Column(ForeignKey(Tweet.id))
-    done = Column(Boolean, default=False)
+    title = Column(String(100), unique=True, nullable=False)
 
     def __repr__(self):
-        return f"<ProBank(id={self.id}, tweet={self.tweet}, done={self.done})>"
+        return f"<Feature(id={self.id}, title={self.title})>"
+
+# Represents the classification of a TikTok video
+class VideoClassification(Base):
+    __tablename__ = 'VideosClassification'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    video_id = Column(BigInteger, ForeignKey('VideosMeta.id'))
+    classification = Column(String(50), nullable=False) # Classification result
+    classified_by = Column(Integer, ForeignKey('Users.id'))
+
+    def __repr__(self):
+        return f"<VideoClassification(id={self.id}, video_id={self.video_id}, classification={self.classification})>"
+
+# Represents the many-to-many relationship between classifications and features
+class VideosClassificationFeature(Base):
+    __tablename__ = 'VideosClassification_Features'
+
+    classification_id = Column(Integer, ForeignKey('VideosClassification.id'), primary_key=True)
+    feature_id = Column(Integer, ForeignKey('Features.id'), primary_key=True)
+
+    def __repr__(self):
+        return f"<VideosClassificationFeature(classification_id={self.classification_id}, feature_id={self.feature_id})>"
+
+# Represents a TikTok user
+class TiktokUser(Base):
+    __tablename__ = 'TiktokUsers'
+
+    id = Column(BigInteger, primary_key=True)
+    username = Column(String(100))
+    nickname = Column(String(100))
+    description = Column(Text) # Description/Bio
+    region = Column(String(50))
+    video_num = Column(Integer, default=0) # Number of videos uploaded
+    fans = Column(Integer, default=0) # Number of fans (followers)
+    following = Column(Integer, default=0) # Number of users followed
+    friends = Column(Integer, default=0) # Number of friends
+    likes = Column(Integer, default=0) # Total number of likes
+    thumbnail = Column(Text)  # Profile thumbnail URL
+    pre_classification = Column(String(50)) # Pre tagging classification
+
+    def __repr__(self):
+        return f"<TiktokUser(id={self.id}, username={self.username})>"
+
+# Represents metadata for a TikTok video
+class VideoMeta(Base):
+    __tablename__ = 'VideosMeta'
+
+    id = Column(BigInteger, primary_key=True)
+    description = Column(Text) # Video description
+    user_id = Column(BigInteger, ForeignKey('TiktokUsers.id'))  # Foreign key to the uploader's ID
+    play_count = Column(Integer, default=0)
+    share_count = Column(Integer, default=0)
+    comment_count = Column(Integer, default=0)
+    created_at = Column(DateTime) # Video creation timestamp
+    duration = Column(Integer) # Video duration in seconds
+    height = Column(Integer) # Video resolution height
+    width = Column(Integer) # Video resolution width
+    video_file = Column(Text)
+    video_thumbnail = Column(Text)
+    web_url = Column(Text)
+    music_id = Column(Integer, ForeignKey('Music.id')) # Foreign key to the music in the video
+
+    def __repr__(self):
+        return f"<VideoMeta(id={self.id}, description={self.description})>"
+
+# Represents a hashtag used in a TikTok video
+class Hashtag(Base):
+    __tablename__ = 'Hashtags'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    content = Column(String(100), unique=True)
+
+    def __repr__(self):
+        return f"<Hashtag(id={self.id}, content={self.content})>"
+
+# Represents the many-to-many relationship between videos and hashtags
+class VideoMetaHashtag(Base):
+    __tablename__ = 'VideosMeta_Hashtags'
+
+    video_id = Column(BigInteger, ForeignKey('VideosMeta.id'), primary_key=True)
+    hashtag_id = Column(Integer, ForeignKey('Hashtags.id'), primary_key=True)
+
+    def __repr__(self):
+        return f"<VideoMetaHashtag(video_id={self.video_id}, hashtag_id={self.hashtag_id})>"
+
+# Represents metadata for music associated with a TikTok video
+class Music(Base):
+    __tablename__ = 'Music'
+
+    id = Column(Integer, primary_key=True)                  # Primary key
+    name = Column(String(150))                              # Music name
+    author = Column(String(100))                            # Music author
+    play_link = Column(Text)                                # Music play URL
+
+    def __repr__(self):
+        return f"<Music(id={self.id}, name={self.name})>"
 
