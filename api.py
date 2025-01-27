@@ -9,8 +9,8 @@ from pydantic import BaseModel
 from asyncio.locks import Lock
 
 from credentials import JWT_SECRET_KEY
-from db_access import DBAccess
-from helper_functions.load_params import load_params
+from db.access import DBAccess
+from utils.load_params import load_params
 
 app = FastAPI()
 auth = HTTPBearer()

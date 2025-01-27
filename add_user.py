@@ -1,5 +1,4 @@
-from db_access import DBAccess
-from datetime import timedelta
+from db.access import DBAccess
 
 db = DBAccess()
 emails = ['']

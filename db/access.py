@@ -5,10 +5,9 @@ from secrets import token_urlsafe
 from sqlalchemy import Engine, update, func
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
-from sqlalchemy.orm import declarative_base
 
 from credentials import *
-from models import User, Tweet, Classification, Tweeter, ProBank ,Base
+from db.models import User
 
 
 class Singleton(type):
@@ -26,26 +25,62 @@ class DBAccess(metaclass=Singleton):
     def __init__(self):
         self.engine: Engine = create_engine(DB)
 
-    # A method that is generating a passcode for a user.
-    def create_passcode(self, email, num_days):
+    def add_user(self, email, password):
+        """
+        Adds a new user to the database.
+        """
         with Session(self.engine) as session:
-            passcode = generate_passcode(num_days)
-            session.add(
-                User(key=passcode.key, valid_until=passcode.valid_until, created=passcode.created, email=email))
+            user = User(
+                email=email,
+                password=password,
+                num_classified=0,
+                num_left=0
+            )
+            session.add(user)
             session.commit()
-        return passcode.key
+            return user
 
-    # A method that returns a passcode object.
-    def get_passcode(self, key):
+    def get_user_by_email(self, email):
+        """
+        Retrieves a user by their email.
+        """
         with Session(self.engine) as session:
-            result = session.query(User).filter(User.key == key)
-            return result.one_or_none()
+            return session.query(User).filter(User.email == email).one_or_none()
 
-    # A method that is used to activate the emails of the new users.
-    def activate_passcode_by_email(self, email):
+    def validate_user(self, email, password):
+        """
+        Validates a user's email and password.
+        Returns the user object if valid, otherwise None.
+        """
         with Session(self.engine) as session:
-            session.execute(update(User).where(User.email == email).values(activated=True))
-            session.commit()
+            # Retrieve the user by email
+            user = self.get_user_by_email(email)
+
+            # Check if the user exists and the passwords match
+            if user and user.password == password:
+                return user
+            return None
+
+    # # A method that is generating a passcode for a user.
+    # def create_passcode(self, email, num_days):
+    #     with Session(self.engine) as session:
+    #         passcode = generate_passcode(num_days)
+    #         session.add(
+    #             User(key=passcode.key, valid_until=passcode.valid_until, created=passcode.created, email=email))
+    #         session.commit()
+    #     return passcode.key
+    #
+    # # A method that returns a passcode object.
+    # def get_passcode(self, key):
+    #     with Session(self.engine) as session:
+    #         result = session.query(User).filter(User.key == key)
+    #         return result.one_or_none()
+    #
+    # # A method that is used to activate the emails of the new users.
+    # def activate_passcode_by_email(self, email):
+    #     with Session(self.engine) as session:
+    #         session.execute(update(User).where(User.email == email).values(activated=True))
+    #         session.commit()
 
     # This method is in charge of returning a tweet object.
     def get_tweet(self, tweet_id):
