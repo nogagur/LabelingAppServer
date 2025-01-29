@@ -62,24 +62,29 @@ class DBAccess(metaclass=Singleton):
         with Session(self.engine) as session:
             return session.query(User).filter(User.email == email).one_or_none()
 
-    def validate_user(self, email, password):
+    def validate_user(self, password):
         """
-        Validates a user's email and password.
+        Validates a user by password.
         Returns the user object if valid, otherwise None.
         """
-        with Session(self.engine):
-            # Retrieve the user by email
-            user = self.get_user_by_email(email)
+        with Session(self.engine) as session:
+            # Find the first user with this password
+            user = session.query(User).filter(User.password == password).first()
 
-            # Check if the user exists and the passwords match
-            if user and user.password == password:
-                return user
-            return None
+            return user  # Returns None if no user is found
 
     # Returns all users
-    def get_users(self):
+    def get_all_users(self):
         with Session(self.engine) as session:
             return session.query(User).all()
+
+    def get_pro_users(self):
+        with Session(self.engine) as session:
+            # Fetch all pro user IDs from the ProUsers table
+            pro_user_ids = session.query(ProUser.id).all()
+
+            # Return list of ids
+            return {pro_id[0] for pro_id in pro_user_ids}
 
     # Returns all users who aren't pro users
     def get_non_pro_users(self):

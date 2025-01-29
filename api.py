@@ -71,21 +71,20 @@ def login_required(func):
     return wrapper
 
 
-class Passcode(BaseModel):
-    passcode: str
+class User(BaseModel):
+    password: str
 
 
 @app.post("/auth/signin")
-async def signin(passcode: Passcode):
+async def signin(user: User):
     db = DBAccess()
-    passcode = passcode.passcode
-    passcode = db.get_passcode(passcode)
-    if passcode is None:
+    user = user.password
+    user = db.validate_user(user)
+    if user is None:
         raise HTTPException(status_code=401, detail="Unauthorized")
-    if not passcode.is_valid(db.get_num_classifications(passcode.key)):
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    token = generate_token(passcode.key)
-    return {'token': token, 'is_pro': passcode.professional}
+    token = generate_token(user.id)
+
+    return {'token': token, 'is_pro': user.id in db.get_pro_users()}
 
 
 @app.get("/get_tweet")
@@ -196,7 +195,7 @@ async def get_pro_panel(passcode):
     users = []
     async with lock:
         db = DBAccess()
-        user_data = db.get_users()
+        user_data = db.get_all_users()
         num_tot = db.get_total_classifications()
         tot_neg = db.get_total_fatah_classifications()
         tot_pos = db.get_total_hamas_classifications()
