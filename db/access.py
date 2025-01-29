@@ -2,13 +2,12 @@ import random
 import re
 from datetime import datetime, timedelta
 from secrets import token_urlsafe
-from sqlalchemy import Engine, update, func
+from sqlalchemy import Engine, update, func, desc
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from credentials import *
-from db.models import User
-
+from db.models import *
 
 class Singleton(type):
     def __init__(cls, name, bases, dict):
@@ -40,6 +39,22 @@ class DBAccess(metaclass=Singleton):
             session.commit()
             return user
 
+    def add_pro_user(self, user_id):
+        """
+        Adds a user to the ProUsers table, making them a pro user.
+        """
+        with Session(self.engine) as session:
+            # Ensure the user exists
+            user = session.query(User).filter(User.id == user_id).one_or_none()
+            if not user:
+                raise ValueError(f"User with ID {user_id} does not exist.")
+
+            # Add the user to the ProUsers table
+            pro_user = ProUser(id=user_id)
+            session.add(pro_user)
+            session.commit()
+            return pro_user
+
     def get_user_by_email(self, email):
         """
         Retrieves a user by their email.
@@ -52,7 +67,7 @@ class DBAccess(metaclass=Singleton):
         Validates a user's email and password.
         Returns the user object if valid, otherwise None.
         """
-        with Session(self.engine) as session:
+        with Session(self.engine):
             # Retrieve the user by email
             user = self.get_user_by_email(email)
 
@@ -61,57 +76,13 @@ class DBAccess(metaclass=Singleton):
                 return user
             return None
 
-    # # A method that is generating a passcode for a user.
-    # def create_passcode(self, email, num_days):
-    #     with Session(self.engine) as session:
-    #         passcode = generate_passcode(num_days)
-    #         session.add(
-    #             User(key=passcode.key, valid_until=passcode.valid_until, created=passcode.created, email=email))
-    #         session.commit()
-    #     return passcode.key
-    #
-    # # A method that returns a passcode object.
-    # def get_passcode(self, key):
-    #     with Session(self.engine) as session:
-    #         result = session.query(User).filter(User.key == key)
-    #         return result.one_or_none()
-    #
-    # # A method that is used to activate the emails of the new users.
-    # def activate_passcode_by_email(self, email):
-    #     with Session(self.engine) as session:
-    #         session.execute(update(User).where(User.email == email).values(activated=True))
-    #         session.commit()
-
-    # This method is in charge of returning a tweet object.
-    def get_tweet(self, tweet_id):
+    def get_video_by_id(self, video_id):
+        """
+        Retrieves a video from the database by its ID.
+        Returns the video object if found, otherwise None.
+        """
         with Session(self.engine) as session:
-            return session.query(Tweet).filter(Tweet.id == tweet_id).one_or_none()
-
-    # This method is in charge of adding a new tweet to the db.
-    def insert_tweet(self, tweet_id, tweeter, content):
-        with Session(self.engine) as session:
-            # Do a cleanup of the content.
-            content = preprocess_tweet(content)
-            if not content:
-                return
-            session.add(Tweet(id=tweet_id, tweeter=tweeter, content=content))
-            session.commit()
-
-    # This method inserts a new tweeter to the db.
-    def insert_tweeter(self, username):
-        with Session(self.engine) as session:
-            session.add(Tweeter(username=username))
-            session.commit()
-
-    def insert_to_probank(self, tweet_id):
-        with Session(self.engine) as session:
-            session.add(ProBank(tweet=tweet_id, done=False))
-            session.commit()
-
-    # This method returns the tweeter as an object.
-    def get_tweeter(self, username):
-        with Session(self.engine) as session:
-            return session.query(Tweeter).filter(Tweeter.username == username).one_or_none()
+            return session.query(VideoMeta).filter(VideoMeta.id == video_id).one_or_none()
 
     # This method refactors the tweet, in case of a contradiction and a pro's oppinion, or if
     # a new tweet is added to the classification table and is now assigned to the user.
@@ -148,83 +119,33 @@ class DBAccess(metaclass=Singleton):
                                             classified_at=datetime.now())
             s.add(classification)
             s.commit()
-        
-        
-    # Update the starting classifying time for the current tweet. 
-    def update_start(self, tweet, passcode):
+
+
+
+    def get_unclassified_video(self, user_id):
+        """
+        Assign an unclassified video to a user.
+        Each video should be classified by 2 different users.
+        """
         with Session(self.engine) as session:
-            session.execute(
-                update(Classification)
-                .where((Classification.tweet == tweet.id) & (Classification.classifier == passcode))
-                .values(started_classification=datetime.now())
-            )
-            session.commit()
+            # Get videos classified by the current user
+            classified_by_user = session.query(VideoClassification.video_id).filter(
+                VideoClassification.classified_by == user_id
+            ).subquery()
 
-    def get_different_unclassified_tweet(self, passcode, curr_id):
-        with Session(self.engine) as session:
-            # Check if there is a ongoing classification, the status is N/A
-            result = session.query(Tweet).filter(Tweet.id == Classification.tweet).filter(
-                Classification.classifier == passcode).filter(
-                Classification.classification == "N/A").filter(
-                Classification.tweet != curr_id).first()
-            if result:
-                return result
-            else:
-                return None
-                
-    def get_different_unclassified_tweet_pro(self, passcode):
-        with Session(self.engine) as session:
-            # Check if there are tweets in the pro bank that are not assigned already.
-            pro_tweet = session.query(ProBank).filter(ProBank.done == False).first()
-            
-            # If there are tweets for a pro, choose a random one and assign it to the user.
-            if pro_tweet:
-                tweet = session.query(Tweet).filter(Tweet.id == pro_tweet.tweet).first()
-                self.__reserve_tweet_pro(tweet, passcode,pro_tweet)
-                return tweet
+            # Get videos classified once but by another user
+            classified_once = session.query(VideoMeta).join(
+                VideoClassification, VideoMeta.id == VideoClassification.video_id
+            ).group_by(VideoMeta.id).having(func.count(VideoClassification.video_id) == 1).filter(
+                ~VideoMeta.id.in_(classified_by_user)
+            ).all()
 
-            else:
-                return None
+            # Get videos never classified
+            never_classified = session.query(VideoMeta).filter(
+                ~VideoMeta.id.in_(session.query(VideoClassification.video_id))
+            ).all()
 
-    # This method is in charge of assigning a tweet to the user.
-    def get_unclassified_tweet(self, passcode):
-        with Session(self.engine) as session:
-            # Check if there is a ongoing classification, the status is N/A
-            result = session.query(Tweet).filter(Tweet.id == Classification.tweet).filter(
-                Classification.classifier == passcode).filter(
-                Classification.classification == "N/A").first()
-            if result:
-                return result
-
-            # Check if the current user is a pro. If so, assign tweets accordingly.
-            if self.get_passcode(passcode).professional:
-                # Check if there are tweets in the pro bank that are not assigned already.
-                pro_tweet = session.query(ProBank).filter(ProBank.done == False).first()
-                
-                # If there are tweets for a pro, choose a random one and assign it to the user.
-                if pro_tweet:
-                    tweet = session.query(Tweet).filter(Tweet.id == pro_tweet.tweet).first()
-                    self.__reserve_tweet_pro(tweet, passcode,pro_tweet)
-                    return tweet
-
-                else:
-                    return None
-
-            # Get list of tweets that were classified exactly once by any classifier except this one that are not N/A
-            classified_by_curr = session.query(Classification.tweet).filter(Classification.classifier == passcode).group_by(Classification.tweet).all()
-            
-            tweet_ids_to_exclude = [row[0] for row in classified_by_curr if row[0] is not None]
-
-            classified_once = session.query(Tweet)\
-                .filter(Tweet.id == Classification.tweet)\
-                .group_by(Tweet.id)\
-                .having(func.count(Classification.tweet) == 1)\
-                .filter(Classification.classifier != passcode).filter(Tweet.id.notin_(tweet_ids_to_exclude)).all()
-
-            # Return all tweets that are not classified yet.
-            never_classified = session.query(Tweet).filter(~Tweet.id.in_(session.query(Classification.tweet))).all()
-
-            # Randomly choose a tweet that is not classified yet or needs to be classified secondly.
+            # Choose randomly from never classified or classified once
             if classified_once and never_classified:
                 if random.random() < 0.5:
                     result = classified_once
@@ -233,114 +154,149 @@ class DBAccess(metaclass=Singleton):
             else:
                 result = classified_once or never_classified
 
-            ids = [tweet.id for tweet in result]
-            if ids:
-                random_id = random.choice(ids)
-                tweet = next(tweet for tweet in result if tweet.id == random_id)
-                if tweet:
-                    if session.query(Classification).filter(Classification.tweet == tweet.id).filter(
-                    Classification.classifier == passcode).first():
-                        return
-                    self.__reserve_tweet(tweet, passcode)
-                    return tweet
+            # If there are available videos, pick one at random
+            if result:
+                random_video = random.choice(result)
+                return random_video
 
-            # The next lines in charge of mass assign (100) of tweets to users, use when lines
-            # 183-191 and 138-142, 146-157 are commented.
+            return None  # No available videos
 
-            # if ids:
-            #     random.shuffle(ids)
-            #     selected_ids = set(ids[:8])
-            #     for random_id in selected_ids:
-            #         tweet = next((tweet for tweet in result if tweet.id == random_id), None)
-            #         if tweet:
-            #             if session.query(Classification).filter(Classification.tweet == tweet.id).filter(
-            #                 Classification.classifier == passcode).first():
-            #                 continue
-            #             self.__reserve_tweet(tweet, passcode)
-
-    # This method is in charge of the whole classification, without the professionals.
-    def classify_tweet(self, tweet_id, passcode, classification, features):
+    def classify_video(self, video_id, user_id, classification, features):
+        """
+        Stores the user's classification of a video and saves selected features.
+        """
         with Session(self.engine) as session:
-            # The classification is made by a pro user.
-            if self.get_passcode(passcode).professional:
-                return self.classify_tweet_pro(tweet_id, passcode, classification, features)
+            # Ensure the video exists
+            video = session.query(VideoMeta).filter(VideoMeta.id == video_id).one_or_none()
+            if not video:
+                raise ValueError(f"Video {video_id} does not exist.")
 
-            # Search for the wanted tweet and making sure it is unclassified.
-            result = session.query(Classification).filter(Classification.tweet == tweet_id).filter(
-                Classification.classifier == passcode).filter(
-                Classification.classification == "N/A").one_or_none()
-            if not result:
-                return False
-            # Check if this classification needs a pro's attention.
-            self.is_pro_needed(tweet_id,classification,passcode)
-            
-            # Submiting the classification.
-            session.execute(update(Classification).where(Classification.tweet == tweet_id).where(
-                Classification.classifier == passcode).values(classification=classification, features=features,
-                                                                classified_at=datetime.now()))
+            # Ensure the user hasn't already classified this video
+            existing_entry = session.query(VideoClassification).filter(
+                VideoClassification.video_id == video_id,
+                VideoClassification.classified_by == user_id
+            ).one_or_none()
+            if existing_entry:
+                raise ValueError("User has already classified this video.")
+
+            # Store classification
+            classification_entry = VideoClassification(
+                video_id=video_id,
+                classified_by=user_id,
+                classification=classification
+            )
+            session.add(classification_entry)
+            session.commit()  # Commit classification first to get its ID
+
+            # Retrieve classification ID
+            classification_id = classification_entry.id
+
+            # Detect if a pro user needs to classify this video
+            self.check_if_pro_needed(session, video_id)
+
+            self.add_classification_features(classification_id, features, session)
+
+            return classification_entry
+
+    def pro_classify_video(self, video_id, pro_user_id, classification):
+        """
+        Allows a pro user to classify a video that was flagged for review.
+        If the pro classifies it as 'uncertain', it remains that way.
+        Otherwise, the classification is finalized.
+        """
+        with Session(self.engine) as session:
+            # Ensure the pro classification exists
+            pro_entry = session.query(VideoClassification).filter(
+                VideoClassification.video_id == video_id,
+                VideoClassification.classified_by == pro_user_id,
+                VideoClassification.classification == "unknown"
+            ).one_or_none()
+
+            if not pro_entry:
+                raise ValueError("No pending pro classification found for this video.")
+
+            # Update the classification
+            pro_entry.classification = classification
             session.commit()
-            return True
-        
-    # The classification is made by a pro user.
-    def classify_tweet_pro(self, tweet_id, passcode, classification, features):
-        with Session(self.engine) as session:
-            # Search for the wanted tweet and making sure it is unclassified.
-            result = session.query(Classification).filter(Classification.tweet == tweet_id).filter(
-                Classification.classifier == passcode).filter(
-                Classification.classification == "N/A").one_or_none()
-            if not result:
-                return False
-            
-            # Get all the instances of the same tweet and make sure all are classified with the same value.
-            tweets_to_update = session.query(Classification).filter(Classification.tweet == tweet_id).filter(
-                Classification.classifier != passcode).all()
 
-            # Update user's classifications to pro's decision, without time update.
-            for tweet in tweets_to_update:
-                session.execute(update(Classification).where(Classification.tweet == tweet_id).where(
-                    Classification.classifier == tweet.classifier).values(classification=classification, features=features))
+    def add_classification_features(self, classification_id, features, session):
+        """
+        Adds the features selected in the classification to the VideosClassification_Features table.
+        """
+        for feature_title in features:
+            # Ensure the feature exists in the Features table
+            feature_obj = session.query(Feature).filter(Feature.title == feature_title).one_or_none()
+            if not feature_obj:
+                raise ValueError(f"Feature '{feature_title}' does not exist.")
+
+            # Insert into VideosClassification_Features
+            feature_entry = VideosClassificationFeature(
+                classification_id=classification_id,
+                feature_id=feature_obj.id
+            )
+            session.add(feature_entry)
+        session.commit()
+
+    def check_if_pro_needed(self, session, video_id):
+        """
+        Checks if a video requires a pro classification and assigns it if necessary.
+        Conditions:
+        - Two users have classified it differently.
+        - Any user classified it as 'uncertain'.
+        """
+        # Get all classifications for this video
+        classifications = session.query(VideoClassification.classification).filter(
+            VideoClassification.video_id == video_id
+        ).distinct().all()
+
+        # Flatten classification results
+        classifications = [c[0] for c in classifications]
+
+        # If there are two different classifications OR 'uncertain' is present
+        if len(classifications) > 1 or "uncertain" in classifications:
+            # Check if a pro classification already exists
+            pro_entry = session.query(VideoClassification).filter(
+                VideoClassification.video_id == video_id,
+                VideoClassification.classification == "unknown"  # Placeholder for pro
+            ).one_or_none()
+
+            if not pro_entry:
+                # todo: maybe change it to get specific pro users
+                # Get all pro user IDs
+                pro_users = session.query(ProUser.id).order_by(ProUser.id).all()
+                pro_users = [p[0] for p in pro_users]  # Convert to list of IDs
+
+                if not pro_users:
+                    print("No pro users available.")
+                    return
+
+                next_pro_user = self.next_pro_to_assign(pro_users, session)
+
+                # Insert new classification for the pro user with 'unknown' status
+                pro_classification = VideoClassification(
+                    video_id=video_id,
+                    classified_by=next_pro_user,  # Assign the next pro user
+                    classification="unknown"  # Placeholder until pro classifies
+                )
+                session.add(pro_classification)
                 session.commit()
+                print(f"Assigned video {video_id} to pro user {next_pro_user} for review.")
 
-            # Update the pro's classification with time update.
-            session.execute(update(Classification).where(Classification.tweet == tweet_id).where(
-                Classification.classifier == passcode).values(classification=classification, features=features,
-                                                                classified_at=datetime.now()))
-            session.commit()
-            return True
+    def next_pro_to_assign(self, pro_users, session):
+        # todo: change if its just a list of two
+        # Find the last assigned pro user
+        last_pro_entry = session.query(VideoClassification.classified_by).filter(
+            VideoClassification.classified_by.in_(pro_users)
+        ).order_by(desc(VideoClassification.id)).first()
+        # Determine next pro user using round-robin
+        if last_pro_entry:
+            last_pro_user = last_pro_entry[0]
+            last_pro_index = pro_users.index(last_pro_user) if last_pro_user in pro_users else -1
+            next_pro_user = pro_users[(last_pro_index + 1) % len(pro_users)]
+        else:
+            next_pro_user = pro_users[0]  # Start with the first pro user
+        return next_pro_user
 
-    # This method is in charge of checking if the new classification needs a pro's attention.
-    # If this is the fist instance of the tweet in the classifications table, then no need in a pro.
-    # Otherwise, if this is the second instance, it is being tested for contradiction.
-    def is_pro_needed(self, tweet_id, classification,classifier):
-        is_needed = False
-        with Session(self.engine) as session:
-            # Check if there is another instance of this tweet.
-            curr_tweet_classifications = session.query(Classification).filter(Classification.tweet == tweet_id).filter(
-                Classification.classification != "N/A").filter(Classification.classifier != classifier).all()
-            print(curr_tweet_classifications)
-            if len(curr_tweet_classifications) > 0:
-                # If the classification is "unknown", then a pro is needed.
-                if classification == "Unknown":
-                    print("Classification is unknown.")
-                    is_needed = True
-                # Check if both classifications are similar.
-                for curr_class in curr_tweet_classifications:
-                    if curr_class.classification != classification:
-                        print(f"this classification: {classification}, found classificaion: {curr_class.classification}")
-                        is_needed = True
-
-            # Pro's assistance is needed.
-            if is_needed:
-                print("Classification needs pro.")
-                # Check if the tweet is already in the pro bank.
-                if not session.query(ProBank).filter(ProBank.tweet == tweet_id).first():
-                    print("Adding classification to pro bank.")
-                    self.insert_to_probank(tweet_id)
-
-    # This method returns the passcode of a desired email.
-    def get_passcode_by_email(self, email):
-        with Session(self.engine) as session:
-            return session.query(User).filter(User.email == email).one_or_none()
 
     # This method return the number of tweets classified as positive, by a user.
     def get_num_positive_classifications(self, classifier):
@@ -394,17 +350,17 @@ class DBAccess(metaclass=Singleton):
             else:
                 return 0
 
-    # This method return the number of days left until the account is blocked.
-    def get_time_left(self, classifier):
-        with Session(self.engine) as session:
-            current_date = datetime.now().date()
-            user_until = session.query(User).filter(User.key == classifier).first()
-            if user_until is not None and user_until.valid_until is not None:
-                valid_until_date = user_until.valid_until
-                days_left = (valid_until_date - current_date).days
-                return days_left if days_left >= 0 else 0
-            else:
-                return 0
+    # # This method return the number of days left until the account is blocked.
+    # def get_time_left(self, classifier):
+    #     with Session(self.engine) as session:
+    #         current_date = datetime.now().date()
+    #         user_until = session.query(User).filter(User.key == classifier).first()
+    #         if user_until is not None and user_until.valid_until is not None:
+    #             valid_until_date = user_until.valid_until
+    #             days_left = (valid_until_date - current_date).days
+    #             return days_left if days_left >= 0 else 0
+    #         else:
+    #             return 0
 
     # This method returns the number of tweets classified by a user.
     def get_num_classifications(self, classifier):
@@ -518,13 +474,6 @@ def preprocess_tweet(text: str) -> str:
 
     return text
 
-
-# This method is in charge of creating a user in the db.
-def generate_passcode(num_days):
-    duration=timedelta(days=num_days)
-    key = token_urlsafe(6)
-    token = User(key=key, valid_until=datetime.now() + duration, created=datetime.now())
-    return token
 
 
 # The next lines are in charge of bulk classification 

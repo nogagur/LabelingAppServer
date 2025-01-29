@@ -124,7 +124,7 @@ async def get_skip_tweet(passcode, request: SkipTweetRequest):
             db.update_start(tweet, passcode)
             return {'id': tweet.id, 'tweeter': tweet.tweeter, 'content': tweet.content}
         else:
-            tweet = db.get_tweet(curr_id)
+            tweet = db.get_video_by_id(curr_id)
             return {'id': tweet.id, 'tweeter': tweet.tweeter, 'content': tweet.content}
 
 
@@ -140,7 +140,7 @@ async def classify_tweet(passcode, classification: Classification):
     db = DBAccess()
     if not db.get_passcode(passcode).is_valid(db.get_num_classifications(passcode)):
         raise HTTPException(status_code=401, detail="Unauthorized")
-    tweet = db.get_tweet(classification.tweet_id)
+    tweet = db.get_video_by_id(classification.tweet_id)
     if tweet is not None:
         if classification.classification not in ['Positive', 'Negative', 'Irrelevant', 'Unknown']:
             return {'error': 'Invalid classification'}

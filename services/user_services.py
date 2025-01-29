@@ -5,7 +5,7 @@ def generate_password():
     """
     Generates a secure random password.
     """
-    return bcrypt.gensalt().decode()[:12]  # Random 12-character password
+    return bcrypt.gensalt().decode()[:6]  # Random 6-character password
 
 
 def create_user(email):
@@ -29,3 +29,14 @@ def validate_user(email, password):
     """
     db = DBAccess()
     return db.validate_user(email, password)
+
+
+def create_pro_user(user_id):
+    """
+    Converts an existing user into a pro user.
+    """
+    db = DBAccess()
+
+    # Add the user to the ProUsers table
+    pro_user = db.add_pro_user(user_id)
+    return pro_user
