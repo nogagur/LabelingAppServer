@@ -165,7 +165,7 @@ async def get_user_panel(passcode):
     async with lock:
         db = DBAccess()
         num_classified = db.get_num_classifications(passcode)
-        num_pos = db.get_num_positive_classifications(passcode)
+        num_pos = db.get_num_fatah_by_user(passcode)
         num_neg = db.get_num_negative_classifications(passcode)
         time_left = db.get_time_left(passcode)
         num_remain = db.get_num_remaining_classifications(passcode)
@@ -198,8 +198,8 @@ async def get_pro_panel(passcode):
         db = DBAccess()
         user_data = db.get_users()
         num_tot = db.get_total_classifications()
-        tot_neg = db.get_total_negative_classifications()
-        tot_pos = db.get_total_positive_classifications()
+        tot_neg = db.get_total_fatah_classifications()
+        tot_pos = db.get_total_hamas_classifications()
         tot_irr = db.get_total_irrelevant_classifications()
 
 
@@ -207,7 +207,7 @@ async def get_pro_panel(passcode):
             curr_pass = user.key
             email = user.email
             num_classified = db.get_num_classifications(curr_pass)
-            num_pos = db.get_num_positive_classifications(curr_pass)
+            num_pos = db.get_num_fatah_by_user(curr_pass)
             num_irr = db.get_num_irrelevant_classifications(curr_pass)
             num_neg = db.get_num_negative_classifications(curr_pass)
             avg_time = db.get_average_classification_time(curr_pass)

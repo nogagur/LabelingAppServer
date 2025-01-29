@@ -14,7 +14,7 @@ def get_video_for_classification(user_id):
     Ensures the user does not get a video they already classified.
     """
     db = DBAccess()
-    return db.get_unclassified_video(user_id)
+    return db.get_video_for_user(user_id)
 
 def classify_video(user_id, video_id, classification, features):
     """
