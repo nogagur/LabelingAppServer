@@ -280,6 +280,15 @@ class DBAccess(metaclass=Singleton):
             next_pro_user = pro_users[0]  # Start with the first pro user
         return next_pro_user
 
+    def get_uploader_username(self, video_id):
+        """ Returns the video's uploader username """
+        with Session(self.engine) as session:
+            uploader = session.query(TiktokUser.username).join(
+                VideoMeta, TiktokUser.id == VideoMeta.user_id
+            ).filter(VideoMeta.id == video_id).one_or_none()
+
+            return uploader[0] if uploader else "unknown"
+
     # This method return the number of videos classified as hamas, by a user.
     def get_num_hamas_by_user(self, classifier):
         with Session(self.engine) as session:
@@ -328,6 +337,12 @@ class DBAccess(metaclass=Singleton):
                                     .filter(VideoClassification.classification == "Hamas") \
                                     .scalar()
 
+    def get_total_none_classifications(self):
+            with Session(self.engine) as session:
+                return session.query(func.count(func.distinct(VideoClassification.video_id))) \
+                                        .filter(VideoClassification.classification == "None") \
+                                        .scalar()
+
     # def get_finished_classifications(self):
     #     # Create a list to store classification data
     #     classifications_data = []
@@ -354,3 +369,4 @@ class DBAccess(metaclass=Singleton):
     #             })
     #
     #         return classifications_data
+

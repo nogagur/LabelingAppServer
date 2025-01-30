@@ -87,146 +87,124 @@ async def signin(user: User):
     return {'token': token, 'is_pro': user.id in db.get_pro_users()}
 
 
-@app.get("/get_tweet")
+@app.get("/get_video")
 @login_required
-async def get_tweet(passcode):
+async def get_video(user_id):
     async with lock:
         db = DBAccess()
-        tweet = db.get_unclassified_tweet(passcode)
-        if tweet is not None:
-            db.update_start(tweet, passcode)
+        video = db.get_video_for_user(user_id)
 
-    if tweet is not None:
-        return {'id': tweet.id, 'tweeter': tweet.tweeter, 'content': tweet.content}
+    if video is not None:
+        username = db.get_uploader_username(video.id)
+        return {'id': video.id, 'uploader': username, 'file': video.video_file}
     else:
-        return {'error': 'No unclassified tweets'}
+        return {'error': 'No unclassified videos'}
     
 class SkipTweetRequest(BaseModel):
     curr_id: str
-    
-@app.post("/get_skip_tweet")
-@login_required
-async def get_skip_tweet(passcode, request: SkipTweetRequest):
-    curr_id = request.curr_id
-    # TODO: delete next line.
-    print(f"curr_id: {curr_id}")
-    async with lock:
-        db = DBAccess()
-        if db.get_passcode(passcode).professional:
-            tweet = db.get_different_unclassified_tweet_pro(passcode)
-            if tweet is None:
-                tweet = db.get_different_unclassified_tweet(passcode, curr_id)
-        else:
-            tweet = db.get_different_unclassified_tweet(passcode, curr_id)
 
-        if tweet is not None:
-            db.update_start(tweet, passcode)
-            return {'id': tweet.id, 'tweeter': tweet.tweeter, 'content': tweet.content}
-        else:
-            tweet = db.get_video_by_id(curr_id)
-            return {'id': tweet.id, 'tweeter': tweet.tweeter, 'content': tweet.content}
+# TODO: currently no matching db function
+# @app.post("/get_skip_tweet")
+# @login_required
+# async def get_skip_tweet(passcode, request: SkipTweetRequest):
+#     curr_id = request.curr_id
+#     async with lock:
+#         db = DBAccess()
+#         if db.get_passcode(passcode).professional:
+#             tweet = db.get_different_unclassified_tweet_pro(passcode)
+#             if tweet is None:
+#                 tweet = db.get_different_unclassified_tweet(passcode, curr_id)
+#         else:
+#             tweet = db.get_different_unclassified_tweet(passcode, curr_id)
+#
+#         if tweet is not None:
+#             db.update_start(tweet, passcode)
+#             return {'id': tweet.id, 'tweeter': tweet.tweeter, 'content': tweet.content}
+#         else:
+#             tweet = db.get_video_by_id(curr_id)
+#             return {'id': tweet.id, 'tweeter': tweet.tweeter, 'content': tweet.content}
 
 
 class Classification(BaseModel):
     classification: str
-    tweet_id: str
+    video_id: str
     features: str
 
 
-@app.post("/classify_tweet")
+@app.post("/classify_video")
 @login_required
-async def classify_tweet(passcode, classification: Classification):
+async def classify_video(user_id, classification: Classification):
     db = DBAccess()
-    if not db.get_passcode(passcode).is_valid(db.get_num_classifications(passcode)):
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    tweet = db.get_video_by_id(classification.tweet_id)
-    if tweet is not None:
-        if classification.classification not in ['Positive', 'Negative', 'Irrelevant', 'Unknown']:
+    video = db.get_video_by_id(classification.video_id)
+    if video is not None:
+        if classification.classification not in ['Hamas', 'Fatah', 'None', 'Uncertain']:
             return {'error': 'Invalid classification'}
         async with lock:
-            result = db.classify_tweet(classification.tweet_id, passcode, classification.classification,
+            result = db.classify_video(classification.video_id, user_id, classification.classification,
                                        classification.features)
         return {'classified': result}
     else:
-        return {'error': 'No such tweet'}
+        return {'error': 'No such video'}
 
 
 @app.get("/count_classifications")
 @login_required
-async def count_classifications(passcode):
+async def count_classifications(user_id):
     db = DBAccess()
-    result = db.get_num_classifications(passcode)
+    result = db.get_num_classifications(user_id)
     return {"count": result}
 
 @app.get("/get_user_panel")
 @login_required
-async def get_user_panel(passcode):
+async def get_user_panel(user_id):
     async with lock:
         db = DBAccess()
-        num_classified = db.get_num_classifications(passcode)
-        num_pos = db.get_num_fatah_by_user(passcode)
-        num_neg = db.get_num_negative_classifications(passcode)
-        time_left = db.get_time_left(passcode)
-        num_remain = db.get_num_remaining_classifications(passcode)
-        avg_time = db.get_average_classification_time(passcode)
-        num_irr = db.get_num_irrelevant_classifications(passcode)
+        num_classified = db.get_num_classifications(user_id)
+        num_fatah = db.get_num_fatah_by_user(user_id)
+        num_hamas = db.get_num_hamas_by_user(user_id)
+        num_none = db.get_num_none_by_user(user_id)
+        num_remain = db.get_num_remaining_classifications(user_id)
 
-    # Calculate average time in seconds (for demonstration purposes)
-    if avg_time is not None:
-        average_time_seconds = f"{avg_time:.2f}"
-    else:
-        average_time_seconds = "N/A"
-        
     if num_classified is not None:
         return {'total': num_classified,
-                'pos': num_pos,
-                'neg': num_neg,
-                'time': time_left,
-                'remain': num_remain,
-                'avg': average_time_seconds,
-                'irr': num_irr}
+                'fatah': num_fatah,
+                'hamas': num_hamas,
+                'none': num_none,
+                'remain': num_remain}
     else:
         return {'error': 'Error getting user data'}
 
 
 @app.get("/get_pro_panel")
 @login_required
-async def get_pro_panel(passcode):
+async def get_pro_panel(user_id):
     users = []
     async with lock:
         db = DBAccess()
         user_data = db.get_all_users()
         num_tot = db.get_total_classifications()
-        tot_neg = db.get_total_fatah_classifications()
-        tot_pos = db.get_total_hamas_classifications()
-        tot_irr = db.get_total_irrelevant_classifications()
+        tot_fatah = db.get_total_fatah_classifications()
+        tot_hamas = db.get_total_hamas_classifications()
+        tot_none = db.get_total_none_classifications()
 
 
         for user in user_data:
-            curr_pass = user.key
+            curr_user = user.id
             email = user.email
-            num_classified = db.get_num_classifications(curr_pass)
-            num_pos = db.get_num_fatah_by_user(curr_pass)
-            num_irr = db.get_num_irrelevant_classifications(curr_pass)
-            num_neg = db.get_num_negative_classifications(curr_pass)
-            avg_time = db.get_average_classification_time(curr_pass)
-            
-            if num_classified is not None:
+            num_classified = db.get_num_classifications(curr_user)
+            num_fatah = db.get_num_fatah_by_user(curr_user)
+            num_hamas = db.get_num_hamas_by_user(curr_user)
+            num_none = db.get_num_none_by_user(curr_user)
 
-                # Calculate average time in seconds (for demonstration purposes)
-                if avg_time is not None:
-                    average_time_seconds = f"{avg_time:.2f}"
-                else:
-                    average_time_seconds = "N/A"
+            if num_classified is not None:
 
                 # Append user data to the list
                 users.append({
                     "email": email,
                     "personalClassifications": num_classified,
-                    "positiveClassified": num_pos,
-                    "negativeClassified": num_neg,
-                    "averageTime": average_time_seconds,
-                    "irrelevantClassified":num_irr
+                    "fatahClassified": num_fatah,
+                    "hamasClassified": num_hamas,
+                    "noneClassified":num_none
                 })
             else:
                 # Handle error case if data retrieval fails for the user
@@ -237,16 +215,16 @@ async def get_pro_panel(passcode):
 
     return {"users": users,
             "total": num_tot,
-            "total_pos": tot_pos,
-            "total_neg": tot_neg,
-            "total_irr": tot_irr}
+            "total_hamas": tot_hamas,
+            "total_fatah": tot_fatah,
+            "total_none": tot_none}
 
 
 @app.get("/params_list")
 async def params_list():
     # We will make the list of parameters dynamic, so that we can add/remove parameters without changing the web client.
     # Each is boolean.
-
+    # TODO: update features list, maybe need different logic
     return params
 
 
