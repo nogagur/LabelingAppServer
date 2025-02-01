@@ -27,11 +27,11 @@ app.add_middleware(
 )
 
 
-def generate_token(key: str):
+def generate_token(user_id):
     # Set the token expiration time
     expire = datetime.utcnow() + timedelta(hours=3)
     # Create the payload containing the key
-    payload = {"key": key, "exp": expire}
+    payload = {"user_id": user_id, "exp": expire}
     # Generate the JWT token
     token = jwt.encode(payload, JWT_SECRET_KEY, algorithm="HS256")
     return token
@@ -39,28 +39,35 @@ def generate_token(key: str):
 
 def login_required(func):
     async def wrapper(credentials: HTTPAuthorizationCredentials = Depends(auth), *args, **kwargs):
+        db = DBAccess()  # Initialize database access
+
         try:
             # Verify and decode the token
             payload = jwt.decode(credentials.credentials, JWT_SECRET_KEY, algorithms=["HS256"])
-            key = payload.get("key")
-            if key:
-                # Process the request with the authenticated key
-                return await func(passcode=key, *args, **kwargs)
+            user_id = payload.get("user_id")
+
+            if user_id:
+                # Verify the user exists in the database
+                user = db.get_user_by_id(user_id)
+                if not user:
+                    raise HTTPException(status_code=401, detail="Unauthorized: User does not exist")
+
+                # Process the request with the authenticated user_id
+                return await func(user_id=user.id, *args, **kwargs)
             else:
                 raise HTTPException(status_code=401, detail="Invalid token")
         except JWTError:
             raise HTTPException(status_code=401, detail="Invalid token")
 
+    # Preserve original function metadata
     wrapper.__name__ = func.__name__
     wrapper.__doc__ = func.__doc__
 
+    # Adjust the function signature to match original parameters
     params = list(inspect.signature(func).parameters.values()) + list(inspect.signature(wrapper).parameters.values())
     wrapper.__signature__ = inspect.signature(func).replace(
         parameters=[
-            # Use all parameters from handler
-            *filter(lambda p: p.name != 'passcode', inspect.signature(func).parameters.values()),
-
-            # Skip *args and **kwargs from wrapper parameters:
+            *filter(lambda p: p.name != 'user_id', inspect.signature(func).parameters.values()),
             *filter(
                 lambda p: p.kind not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD),
                 inspect.signature(wrapper).parameters.values()
@@ -96,7 +103,7 @@ async def get_video(user_id):
 
     if video is not None:
         username = db.get_uploader_username(video.id)
-        return {'id': video.id, 'uploader': username, 'file': video.video_file}
+        return {'id': video.id, 'uploader': username, 'file': video.video_file, 'description': video.description}
     else:
         return {'error': 'No unclassified videos'}
     

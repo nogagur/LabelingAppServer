@@ -62,6 +62,13 @@ class DBAccess(metaclass=Singleton):
         with Session(self.engine) as session:
             return session.query(User).filter(User.email == email).one_or_none()
 
+    def get_user_by_id(self, user_id):
+        """
+        Retrieves a user by their ID.
+        """
+        with Session(self.engine) as session:
+            return session.query(User).filter(User.id == user_id).one_or_none
+
     def validate_user(self, password):
         """
         Validates a user by password.
