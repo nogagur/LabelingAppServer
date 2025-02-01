@@ -2,15 +2,18 @@ import glob
 import json
 import os
 import re
+from dotenv import load_dotenv
 
 import psycopg2
 
-# Database connection settings
+# Load environment variables from .env file
+load_dotenv()
+
 DB_CONFIG = {
-    "host": "localhost",
-    "database": "tiktok_project",
-    "user": "noga",
-    "password": "root"
+    "host": os.getenv("DB_HOST"),
+    "database": os.getenv("DB_NAME"),
+    "user": os.getenv("DB_USER"),
+    "password": os.getenv("DB_PASSWORD"),
 }
 
 def insert_tiktok_data(data, pre_class):
