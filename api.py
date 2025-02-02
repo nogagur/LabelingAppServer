@@ -7,7 +7,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt, JWTError
 from pydantic import BaseModel
 from asyncio.locks import Lock
-from typing import Optional
+from typing import Optional, Dict
 from jwt.exceptions import ExpiredSignatureError, InvalidTokenError
 
 from credentials import JWT_SECRET_KEY
@@ -41,19 +41,19 @@ def generate_token(user_id):
     return token
 
 
-
-def login_required(func):
-    async def wrapper(request: Request, *args, **kwargs):
-        # Extract the user from the token using your existing helper function.
-        try:
-            user = extract_user_from_token(request)
-        except HTTPException as e:
-            # Reraise the exception to propagate the error to the client.
-            raise e
-
-        # Now pass the user's ID (or the whole user, depending on your needs)
-        return await func(user_id=user.id, request=request, *args, **kwargs)
-    return wrapper
+#
+# def login_required(func):
+#     async def wrapper(request: Request, *args, **kwargs):
+#         # Extract the user from the token using your existing helper function.
+#         try:
+#             user = extract_user_from_token(request)
+#         except HTTPException as e:
+#             # Reraise the exception to propagate the error to the client.
+#             raise e
+#
+#         # Now pass the user's ID (or the whole user, depending on your needs)
+#         return await func(user_id=user.id, request=request, *args, **kwargs)
+#     return wrapper
 
 def extract_user_from_token(request: Request) -> Optional[dict]:
     """
@@ -135,7 +135,6 @@ async def signin(user: User):
 
 @app.get("/get_video")
 async def get_video(current_user = Depends(get_current_user)):
-    # Use current_user.id for your logic
     user_id = current_user.id
 
     async with lock:
@@ -145,7 +144,7 @@ async def get_video(current_user = Depends(get_current_user)):
     if video is not None:
         username = db.get_uploader_username(video.id)
         return {
-            'id': video.id,
+            'id': str(video.id),
             'uploader': username,
             'file': video.video_file,
             'description': video.description
@@ -181,12 +180,12 @@ class SkipTweetRequest(BaseModel):
 class Classification(BaseModel):
     classification: str
     video_id: str
-    features: str
+    features: Dict[str, bool]
 
 
 @app.post("/classify_video")
-@login_required
-async def classify_video(user_id, classification: Classification):
+async def classify_video( classification: Classification, current_user = Depends(get_current_user)):
+    user_id = current_user.id
     db = DBAccess()
     video = db.get_video_by_id(classification.video_id)
     if video is not None:
@@ -201,15 +200,15 @@ async def classify_video(user_id, classification: Classification):
 
 
 @app.get("/count_classifications")
-@login_required
-async def count_classifications(user_id):
+async def count_classifications(current_user = Depends(get_current_user)):
+    user_id = current_user.id
     db = DBAccess()
     result = db.get_num_classifications(user_id)
     return {"count": result}
 
 @app.get("/get_user_panel")
-@login_required
-async def get_user_panel(user_id):
+async def get_user_panel(current_user = Depends(get_current_user)):
+    user_id = current_user.id
     async with lock:
         db = DBAccess()
         num_classified = db.get_num_classifications(user_id)
@@ -229,8 +228,7 @@ async def get_user_panel(user_id):
 
 
 @app.get("/get_pro_panel")
-@login_required
-async def get_pro_panel(user_id):
+async def get_pro_panel():
     users = []
     async with lock:
         db = DBAccess()

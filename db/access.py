@@ -219,7 +219,8 @@ class DBAccess(metaclass=Singleton):
             classification_entry.classification = classification
 
             # Save selected features in VideosClassification_Features
-            self.add_classification_features(classification_entry.id, features, session)
+            if features:
+                self.add_classification_features(classification_entry.id, features, session)
 
             # Detect if a pro user is needed due to conflict or "uncertain" classification
             self.check_if_pro_needed(session, video_id)
@@ -252,18 +253,20 @@ class DBAccess(metaclass=Singleton):
         """
         Adds the features selected in the classification to the VideosClassification_Features table.
         """
-        for feature_title in features:
-            # Ensure the feature exists in the Features table
-            feature_obj = session.query(Feature).filter(Feature.title == feature_title).one_or_none()
-            if not feature_obj:
-                raise ValueError(f"Feature '{feature_title}' does not exist.")
+        for feature_id, is_selected in features.items():
+            if is_selected:  # Only add features that are marked as True
+                # Ensure the feature exists in the Features table
+                feature_obj = session.query(Feature).filter(Feature.id == feature_id).one_or_none()
+                if not feature_obj:
+                    raise ValueError(f"Feature with ID '{feature_id}' does not exist.")
 
-            # Insert into VideosClassification_Features
-            feature_entry = VideosClassificationFeature(
-                classification_id=classification_id,
-                feature_id=feature_obj.id
-            )
-            session.add(feature_entry)
+                # Insert into VideosClassification_Features table
+                feature_entry = VideosClassificationFeature(
+                    classification_id=classification_id,
+                    feature_id=feature_id
+                )
+                session.add(feature_entry)
+
         session.commit()
 
     def check_if_pro_needed(self, session, video_id):
