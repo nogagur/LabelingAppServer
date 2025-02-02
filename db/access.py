@@ -31,13 +31,17 @@ class DBAccess(metaclass=Singleton):
         with Session(self.engine) as session:
             user = User(
                 email=email,
-                password=password,
-                num_classified=0,
-                num_left=0
+                password=password
             )
             session.add(user)
             session.commit()
-            return user
+            session.refresh(user)
+
+            return {
+                "id": user.id,
+                "email": user.email,
+                "password": user.password
+            }
 
     def add_pro_user(self, user_id):
         """
@@ -53,7 +57,7 @@ class DBAccess(metaclass=Singleton):
             pro_user = ProUser(id=user_id)
             session.add(pro_user)
             session.commit()
-            return pro_user
+            return {"id": pro_user.id}
 
     def get_user_by_email(self, email):
         """

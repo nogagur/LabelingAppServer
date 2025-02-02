@@ -12,8 +12,6 @@ class User(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     email = Column(String(255), unique=True, nullable=False)
     password = Column(String(255), nullable=False)
-    num_classified = Column(Integer, default=0)
-    num_left = Column(Integer, default=0)
 
     def __repr__(self):
         return f"<User(id={self.id}, email={self.email})>"
@@ -27,16 +25,16 @@ class User(Base):
 
 # Represents professional users (subclass of Users)
 class ProUser(Base):
-    __tablename__ = 'ProUsers'
+    __tablename__ = 'prousers'
 
-    id = Column(Integer, ForeignKey('Users.id'), primary_key=True)
+    id = Column(Integer, ForeignKey('users.id'), primary_key=True)
 
     def __repr__(self):
         return f"<ProUser(id={self.id})>"
 
 # Represents features for classifying videos
 class Feature(Base):
-    __tablename__ = 'Features'
+    __tablename__ = 'features'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     title = Column(String(100), unique=True, nullable=False)
@@ -46,29 +44,29 @@ class Feature(Base):
 
 # Represents the classification of a TikTok video
 class VideoClassification(Base):
-    __tablename__ = 'VideosClassification'
+    __tablename__ = 'videosclassification'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    video_id = Column(BigInteger, ForeignKey('VideosMeta.id'))
+    video_id = Column(BigInteger, ForeignKey('videosmeta.id'))
     classification = Column(String(50), nullable=False) # Classification result
-    classified_by = Column(Integer, ForeignKey('Users.id'))
+    classified_by = Column(Integer, ForeignKey('users.id'))
 
     def __repr__(self):
         return f"<VideoClassification(id={self.id}, video_id={self.video_id}, classification={self.classification})>"
 
 # Represents the many-to-many relationship between classifications and features
 class VideosClassificationFeature(Base):
-    __tablename__ = 'VideosClassification_Features'
+    __tablename__ = 'videosclassification_features'
 
-    classification_id = Column(Integer, ForeignKey('VideosClassification.id'), primary_key=True)
-    feature_id = Column(Integer, ForeignKey('Features.id'), primary_key=True)
+    classification_id = Column(Integer, ForeignKey('videosclassification.id'), primary_key=True)
+    feature_id = Column(Integer, ForeignKey('features.id'), primary_key=True)
 
     def __repr__(self):
         return f"<VideosClassificationFeature(classification_id={self.classification_id}, feature_id={self.feature_id})>"
 
 # Represents a TikTok user
 class TiktokUser(Base):
-    __tablename__ = 'TiktokUsers'
+    __tablename__ = 'tiktokusers'
 
     id = Column(BigInteger, primary_key=True)
     username = Column(String(100))
@@ -88,11 +86,11 @@ class TiktokUser(Base):
 
 # Represents metadata for a TikTok video
 class VideoMeta(Base):
-    __tablename__ = 'VideosMeta'
+    __tablename__ = 'videosmeta'
 
     id = Column(BigInteger, primary_key=True)
     description = Column(Text) # Video description
-    user_id = Column(BigInteger, ForeignKey('TiktokUsers.id'))  # Foreign key to the uploader's ID
+    user_id = Column(BigInteger, ForeignKey('tiktokusers.id'))  # Foreign key to the uploader's ID
     play_count = Column(Integer, default=0)
     share_count = Column(Integer, default=0)
     comment_count = Column(Integer, default=0)
@@ -103,14 +101,14 @@ class VideoMeta(Base):
     video_file = Column(Text)
     video_thumbnail = Column(Text)
     web_url = Column(Text)
-    music_id = Column(Integer, ForeignKey('Music.id')) # Foreign key to the music in the video
+    music_id = Column(Integer, ForeignKey('music.id')) # Foreign key to the music in the video
 
     def __repr__(self):
         return f"<VideoMeta(id={self.id}, description={self.description})>"
 
 # Represents a hashtag used in a TikTok video
 class Hashtag(Base):
-    __tablename__ = 'Hashtags'
+    __tablename__ = 'hashtags'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     content = Column(String(100), unique=True)
@@ -120,17 +118,17 @@ class Hashtag(Base):
 
 # Represents the many-to-many relationship between videos and hashtags
 class VideoMetaHashtag(Base):
-    __tablename__ = 'VideosMeta_Hashtags'
+    __tablename__ = 'videosmeta_hashtags'
 
-    video_id = Column(BigInteger, ForeignKey('VideosMeta.id'), primary_key=True)
-    hashtag_id = Column(Integer, ForeignKey('Hashtags.id'), primary_key=True)
+    video_id = Column(BigInteger, ForeignKey('videosmeta.id'), primary_key=True)
+    hashtag_id = Column(Integer, ForeignKey('hashtags.id'), primary_key=True)
 
     def __repr__(self):
         return f"<VideoMetaHashtag(video_id={self.video_id}, hashtag_id={self.hashtag_id})>"
 
 # Represents metadata for music associated with a TikTok video
 class Music(Base):
-    __tablename__ = 'Music'
+    __tablename__ = 'music'
 
     id = Column(Integer, primary_key=True)                  # Primary key
     name = Column(String(150))                              # Music name

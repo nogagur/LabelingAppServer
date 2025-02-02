@@ -37,7 +37,7 @@ def add_pro_user(email):
 
     # If user creation was successful, add them to ProUsers
     if user:
-        db.add_pro_user(user.id)  # Assuming add_pro_user() takes user ID
+        db.add_pro_user(user["id"])  # Assuming add_pro_user() takes user ID
 
     return password
 
@@ -54,3 +54,11 @@ def create_multiple_users(email_list):
         user_credentials[email] = password
 
     return user_credentials
+
+def main():
+    # Create a single user
+    email = "biuproject051@gmail.com"
+    add_pro_user(email)
+
+if __name__ == "__main__":
+    main()
