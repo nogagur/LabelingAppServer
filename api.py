@@ -1,12 +1,14 @@
 import inspect
 from datetime import datetime, timedelta
 
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt, JWTError
 from pydantic import BaseModel
 from asyncio.locks import Lock
+from typing import Optional
+from jwt.exceptions import ExpiredSignatureError, InvalidTokenError
 
 from credentials import JWT_SECRET_KEY
 from db.access import DBAccess
@@ -20,11 +22,13 @@ lock = Lock()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:3000"],  # React frontend URL
     allow_credentials=True,
-    allow_methods=["*"], 
-    allow_headers=["*"],
+    allow_methods=["*"],  # Allow all HTTP methods (GET, POST, etc.)
+    allow_headers=["*"],  # Allow all headers
 )
+
+ALGORITHM = "HS256"  # Algorithm used for encoding/decoding the token
 
 
 def generate_token(user_id):
@@ -37,45 +41,80 @@ def generate_token(user_id):
     return token
 
 
+
 def login_required(func):
-    async def wrapper(credentials: HTTPAuthorizationCredentials = Depends(auth), *args, **kwargs):
-        db = DBAccess()  # Initialize database access
-
+    async def wrapper(request: Request, *args, **kwargs):
+        # Extract the user from the token using your existing helper function.
         try:
-            # Verify and decode the token
-            payload = jwt.decode(credentials.credentials, JWT_SECRET_KEY, algorithms=["HS256"])
-            user_id = payload.get("user_id")
+            user = extract_user_from_token(request)
+        except HTTPException as e:
+            # Reraise the exception to propagate the error to the client.
+            raise e
 
-            if user_id:
-                # Verify the user exists in the database
-                user = db.get_user_by_id(user_id)
-                if not user:
-                    raise HTTPException(status_code=401, detail="Unauthorized: User does not exist")
+        # Now pass the user's ID (or the whole user, depending on your needs)
+        return await func(user_id=user.id, request=request, *args, **kwargs)
+    return wrapper
 
-                # Process the request with the authenticated user_id
-                return await func(user_id=user.id, *args, **kwargs)
-            else:
-                raise HTTPException(status_code=401, detail="Invalid token")
-        except JWTError:
+def extract_user_from_token(request: Request) -> Optional[dict]:
+    """
+    Extracts and verifies the JWT token from the Authorization header.
+    Returns the user object if valid, otherwise raises an HTTPException.
+    """
+    db = DBAccess()
+
+    # Get Authorization header
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing or invalid authorization token")
+
+    # Extract the token
+    token = auth_header.split("Bearer ")[1]
+
+    try:
+        # Decode the token using the imported SECRET_KEY and ALGORITHM
+        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[ALGORITHM])
+        user_id = payload.get("user_id")  # Ensure the token contains user_id
+
+        if user_id is None:
             raise HTTPException(status_code=401, detail="Invalid token")
 
-    # Preserve original function metadata
-    wrapper.__name__ = func.__name__
-    wrapper.__doc__ = func.__doc__
+        # Fetch user from the database
+        user = db.get_user_by_id(user_id)  # Assuming a method exists to fetch user by ID
 
-    # Adjust the function signature to match original parameters
-    params = list(inspect.signature(func).parameters.values()) + list(inspect.signature(wrapper).parameters.values())
-    wrapper.__signature__ = inspect.signature(func).replace(
-        parameters=[
-            *filter(lambda p: p.name != 'user_id', inspect.signature(func).parameters.values()),
-            *filter(
-                lambda p: p.kind not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD),
-                inspect.signature(wrapper).parameters.values()
-            )
-        ]
-    )
+        if user is None:
+            raise HTTPException(status_code=401, detail="User not found")
 
-    return wrapper
+        return user
+
+    except ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token has expired")
+    except InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+
+# Dependency to extract the user from the token
+def get_current_user(request: Request):
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing or invalid authorization token")
+
+    token = auth_header.split("Bearer ")[1]
+    try:
+        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[ALGORITHM])
+        user_id = payload.get("user_id")
+        if user_id is None:
+            raise HTTPException(status_code=401, detail="Invalid token: no user_id")
+
+        db = DBAccess()  # Ensure your DBAccess class is set up properly
+        user = db.get_user_by_id(user_id)
+        if user is None:
+            raise HTTPException(status_code=401, detail="User not found")
+
+        return user
+    except ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token has expired")
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
 
 
 class User(BaseModel):
@@ -91,19 +130,26 @@ async def signin(user: User):
         raise HTTPException(status_code=401, detail="Unauthorized")
     token = generate_token(user.id)
 
-    return {'token': token, 'is_pro': user.id in db.get_pro_users()}
+    return {'user_id':user.id,'token': token, 'is_pro': user.id in db.get_pro_users()}
 
 
 @app.get("/get_video")
-@login_required
-async def get_video(user_id):
+async def get_video(current_user = Depends(get_current_user)):
+    # Use current_user.id for your logic
+    user_id = current_user.id
+
     async with lock:
         db = DBAccess()
         video = db.get_video_for_user(user_id)
 
     if video is not None:
         username = db.get_uploader_username(video.id)
-        return {'id': video.id, 'uploader': username, 'file': video.video_file, 'description': video.description}
+        return {
+            'id': video.id,
+            'uploader': username,
+            'file': video.video_file,
+            'description': video.description
+        }
     else:
         return {'error': 'No unclassified videos'}
     

@@ -71,7 +71,8 @@ class DBAccess(metaclass=Singleton):
         Retrieves a user by their ID.
         """
         with Session(self.engine) as session:
-            return session.query(User).filter(User.id == user_id).one_or_none
+            user = session.query(User).filter(User.id == user_id).one_or_none()
+            return user
 
     def validate_user(self, password):
         """
@@ -124,8 +125,8 @@ class DBAccess(metaclass=Singleton):
           - Videos assigned only once.
         Inserts a classification entry with 'N/A' for later updating.
         """
+
         with Session(self.engine) as session:
-            # Find all videos that are either unassigned or assigned to only one user
             eligible_videos = session.query(VideoMeta.id).outerjoin(
                 VideoClassification, VideoMeta.id == VideoClassification.video_id
             ).group_by(VideoMeta.id).having(func.count(VideoClassification.video_id) < 2).all()
@@ -134,20 +135,20 @@ class DBAccess(metaclass=Singleton):
                 print("No available videos to assign.")
                 return None
 
-            # Select a video randomly from the eligible list
             video_id = random.choice([v[0] for v in eligible_videos])
 
-            # Check if user already has this video assigned
             existing_entry = session.query(VideoClassification).filter(
                 VideoClassification.video_id == video_id,
                 VideoClassification.classified_by == user_id
             ).one_or_none()
 
             video = session.query(VideoMeta).filter(VideoMeta.id == video_id).one()
+
             if existing_entry:
+                # Fully load all needed attributes before session closes
+                _ = video.id, video.video_file, video.description
                 return video
 
-            # Assign the video to the user by inserting a new classification record with 'N/A'
             classification_entry = VideoClassification(
                 video_id=video_id,
                 classified_by=user_id,
@@ -156,7 +157,42 @@ class DBAccess(metaclass=Singleton):
             session.add(classification_entry)
             session.commit()
 
+            # Fully load attributes
+            _ = video.id, video.video_file, video.description
             return video
+        # with Session(self.engine) as session:
+        #     # Find all videos that are either unassigned or assigned to only one user
+        #     eligible_videos = session.query(VideoMeta.id).outerjoin(
+        #         VideoClassification, VideoMeta.id == VideoClassification.video_id
+        #     ).group_by(VideoMeta.id).having(func.count(VideoClassification.video_id) < 2).all()
+        #
+        #     if not eligible_videos:
+        #         print("No available videos to assign.")
+        #         return None
+        #
+        #     # Select a video randomly from the eligible list
+        #     video_id = random.choice([v[0] for v in eligible_videos])
+        #
+        #     # Check if user already has this video assigned
+        #     existing_entry = session.query(VideoClassification).filter(
+        #         VideoClassification.video_id == video_id,
+        #         VideoClassification.classified_by == user_id
+        #     ).one_or_none()
+        #
+        #     video = session.query(VideoMeta).filter(VideoMeta.id == video_id).one()
+        #     if existing_entry:
+        #         return video
+        #
+        #     # Assign the video to the user by inserting a new classification record with 'N/A'
+        #     classification_entry = VideoClassification(
+        #         video_id=video_id,
+        #         classified_by=user_id,
+        #         classification="N/A"
+        #     )
+        #     session.add(classification_entry)
+        #     session.commit()
+        #
+        #     return video
 
     def classify_video(self, video_id, user_id, classification, features):
         """
