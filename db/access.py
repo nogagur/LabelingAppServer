@@ -118,81 +118,109 @@ class DBAccess(metaclass=Singleton):
 
     def get_video_for_user(self, user_id):
         """
-        Assigns a new video to a user.
-        Ensures each video is assigned to at most 2 users.
-        Selects a video randomly from:
-          - Videos that have never been assigned.
-          - Videos assigned only once.
-        Inserts a classification entry with 'N/A' for later updating.
+        Retrieves a video assigned to the user that is still unclassified.
+        If the user has no assigned videos left, return None.
         """
 
         with Session(self.engine) as session:
-            eligible_videos = session.query(VideoMeta.id).outerjoin(
+            # Fetch an unclassified video assigned to this user
+            video_entry = session.query(VideoMeta).join(
+                VideoClassification, VideoMeta.id == VideoClassification.video_id
+            ).filter(
+                VideoClassification.classified_by == user_id,
+                VideoClassification.classification == "N/A"
+            ).order_by(func.random()).first()  # Pick a random assigned video
+
+            if not video_entry:
+                print(f"No unclassified videos left for user {user_id}.")
+                return None
+
+            # Fully load attributes before session closes
+            _ = video_entry.id, video_entry.video_file, video_entry.description
+            return video_entry
+
+    def assign_videos_to_users(self, max_videos_per_user=10):
+        """
+        Assigns videos randomly to non-pro users while ensuring:
+        - Each video is assigned to exactly 2 users (if possible).
+        - Each user gets assigned up to `max_videos_per_user`.
+        - If needed, some videos are assigned to only 1 user to reach max limit per user.
+        """
+
+        with Session(self.engine) as session:
+            # Fetch videos that are assigned to less than 2 users
+            partially_assigned_videos = session.query(VideoMeta.id).outerjoin(
                 VideoClassification, VideoMeta.id == VideoClassification.video_id
             ).group_by(VideoMeta.id).having(func.count(VideoClassification.video_id) < 2).all()
 
-            if not eligible_videos:
-                print("No available videos to assign.")
-                return None
+            partially_assigned_videos = [v[0] for v in partially_assigned_videos]
+            random.shuffle(partially_assigned_videos)  # Shuffle video order
 
-            video_id = random.choice([v[0] for v in eligible_videos])
+            # Get all non-pro users
+            non_pro_users = session.query(User.id).filter(
+                ~User.id.in_(session.query(ProUser.id))
+            ).all()
 
-            existing_entry = session.query(VideoClassification).filter(
-                VideoClassification.video_id == video_id,
-                VideoClassification.classified_by == user_id
-            ).one_or_none()
+            non_pro_users = [u[0] for u in non_pro_users]
+            random.shuffle(non_pro_users)  # Shuffle users for fairness
 
-            video = session.query(VideoMeta).filter(VideoMeta.id == video_id).one()
+            # Track user assignments
+            user_video_count = {user: 0 for user in non_pro_users}
+            user_video_map = {user: [] for user in non_pro_users}
 
-            if existing_entry:
-                # Fully load all needed attributes before session closes
-                _ = video.id, video.video_file, video.description
-                return video
+            assigned_videos = set()  # Track videos fully assigned
 
-            classification_entry = VideoClassification(
-                video_id=video_id,
-                classified_by=user_id,
-                classification="N/A"
-            )
-            session.add(classification_entry)
+            # Assign videos to users
+            for video_id in partially_assigned_videos:
+                assigned_count = session.query(VideoClassification).filter(
+                    VideoClassification.video_id == video_id
+                ).count()
+
+                if assigned_count >= 2:
+                    continue  # Skip already fully assigned videos
+
+                # Get eligible users who need more videos
+                eligible_users = [u for u in non_pro_users if user_video_count[u] < max_videos_per_user]
+
+                if not eligible_users:
+                    break  # Stop if no users need more videos
+
+                # Choose up to 2 users (but ensure no video goes over 2 assignments)
+                selected_users = random.sample(eligible_users, min(2 - assigned_count, len(eligible_users)))
+
+                for user_id in selected_users:
+                    session.add(VideoClassification(video_id=video_id, classified_by=user_id, classification="N/A"))
+                    user_video_map[user_id].append(video_id)
+                    user_video_count[user_id] += 1
+
+                # Mark video as fully assigned if it reached 2 users
+                if session.query(VideoClassification).filter(VideoClassification.video_id == video_id).count() == 2:
+                    assigned_videos.add(video_id)
+
+            # Ensure every user gets `max_videos_per_user' videos
+            remaining_users = [u for u in non_pro_users if user_video_count[u] < max_videos_per_user]
+            unassigned_videos = [v for v in partially_assigned_videos if v not in assigned_videos]
+            random.shuffle(unassigned_videos)
+
+            while remaining_users and unassigned_videos:
+                for user in remaining_users:
+                    if user_video_count[user] >= max_videos_per_user:
+                        continue  # Skip users who reached max quota
+
+                    if not unassigned_videos:
+                        break  # Stop if there are no videos left
+
+                    video_id = unassigned_videos.pop()
+                    session.add(VideoClassification(video_id=video_id, classified_by=user, classification="N/A"))
+                    user_video_map[user].append(video_id)
+                    user_video_count[user] += 1
+
+                    if user_video_count[user] >= max_videos_per_user:
+                        remaining_users.remove(user)
+
             session.commit()
-
-            # Fully load attributes
-            _ = video.id, video.video_file, video.description
-            return video
-        # with Session(self.engine) as session:
-        #     # Find all videos that are either unassigned or assigned to only one user
-        #     eligible_videos = session.query(VideoMeta.id).outerjoin(
-        #         VideoClassification, VideoMeta.id == VideoClassification.video_id
-        #     ).group_by(VideoMeta.id).having(func.count(VideoClassification.video_id) < 2).all()
-        #
-        #     if not eligible_videos:
-        #         print("No available videos to assign.")
-        #         return None
-        #
-        #     # Select a video randomly from the eligible list
-        #     video_id = random.choice([v[0] for v in eligible_videos])
-        #
-        #     # Check if user already has this video assigned
-        #     existing_entry = session.query(VideoClassification).filter(
-        #         VideoClassification.video_id == video_id,
-        #         VideoClassification.classified_by == user_id
-        #     ).one_or_none()
-        #
-        #     video = session.query(VideoMeta).filter(VideoMeta.id == video_id).one()
-        #     if existing_entry:
-        #         return video
-        #
-        #     # Assign the video to the user by inserting a new classification record with 'N/A'
-        #     classification_entry = VideoClassification(
-        #         video_id=video_id,
-        #         classified_by=user_id,
-        #         classification="N/A"
-        #     )
-        #     session.add(classification_entry)
-        #     session.commit()
-        #
-        #     return video
+            print(f"Assigned videos. Each user received up to {max_videos_per_user} videos.")
+            return user_video_map  # Optional debug output
 
     def classify_video(self, video_id, user_id, classification, features):
         """
@@ -223,31 +251,15 @@ class DBAccess(metaclass=Singleton):
                 self.add_classification_features(classification_entry.id, features, session)
 
             # Detect if a pro user is needed due to conflict or "uncertain" classification
-            self.check_if_pro_needed(session, video_id)
+            if not self.is_pro_user(user_id):
+                self.check_if_pro_needed(session, video_id)
 
             session.commit()
             return classification_entry
 
-    def pro_classify_video(self, video_id, pro_user_id, classification):
-        """
-        Allows a pro user to classify a video that was flagged for review.
-        If the pro classifies it as 'uncertain', it remains that way.
-        Otherwise, the classification is finalized.
-        """
+    def is_pro_user(self, user_id):
         with Session(self.engine) as session:
-            # Ensure the pro classification exists
-            pro_entry = session.query(VideoClassification).filter(
-                VideoClassification.video_id == video_id,
-                VideoClassification.classified_by == pro_user_id,
-                VideoClassification.classification == "N/A"
-            ).one_or_none()
-
-            if not pro_entry:
-                raise ValueError("No pending pro classification found for this video.")
-
-            # Update the classification
-            pro_entry.classification = classification
-            session.commit()
+            return session.query(ProUser).filter(ProUser.id == user_id).one_or_none()
 
     def add_classification_features(self, classification_id, features, session):
         """
@@ -286,9 +298,11 @@ class DBAccess(metaclass=Singleton):
         classifications = [c[0] for c in classifications]
 
         # If there are two different classifications OR 'uncertain' is present
-        if len(classifications) > 1 or "uncertain" in classifications:
+        if len(classifications) > 1 or "Uncertain" in classifications:
             # Check if a pro classification already exists
-            pro_entry = session.query(VideoClassification).filter(
+            pro_entry = session.query(VideoClassification).join(
+                ProUser, VideoClassification.classified_by == ProUser.id
+            ).filter(
                 VideoClassification.video_id == video_id,
                 VideoClassification.classification == "N/A"
             ).one_or_none()
@@ -305,11 +319,11 @@ class DBAccess(metaclass=Singleton):
 
                 next_pro_user = self.next_pro_to_assign(pro_users, session)
 
-                # Insert new classification for the pro user with 'unknown' status
+                # Insert new classification for the pro user
                 pro_classification = VideoClassification(
                     video_id=video_id,
-                    classified_by=next_pro_user,  # Assign the next pro user
-                    classification="N/A"  # Placeholder until pro classifies
+                    classified_by=next_pro_user,
+                    classification="N/A"
                 )
                 session.add(pro_classification)
                 session.commit()
