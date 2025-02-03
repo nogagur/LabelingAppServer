@@ -371,6 +371,12 @@ class DBAccess(metaclass=Singleton):
             return session.query(VideoClassification).filter(VideoClassification.classified_by == classifier).filter(
                 VideoClassification.classification == "None").count()
 
+    # This method return the number of videos classified as uncertain which organization, by a user.
+    def get_num_uncertain_by_user(self, classifier):
+        with Session(self.engine) as session:
+            return session.query(VideoClassification).filter(VideoClassification.classified_by == classifier).filter(
+                VideoClassification.classification == "Uncertain").count()
+
     # This method return the number of videos unclassified, by a user.
     def get_num_remaining_classifications(self, classifier):
         with Session(self.engine) as session:
@@ -406,6 +412,12 @@ class DBAccess(metaclass=Singleton):
                 return session.query(func.count(func.distinct(VideoClassification.video_id))) \
                                         .filter(VideoClassification.classification == "None") \
                                         .scalar()
+
+    def get_total_uncertain_classifications(self):
+        with Session(self.engine) as session:
+            return session.query(func.count(func.distinct(VideoClassification.video_id))) \
+                .filter(VideoClassification.classification == "Uncertain") \
+                .scalar()
 
     # def get_finished_classifications(self):
     #     # Create a list to store classification data
