@@ -176,6 +176,7 @@ async def get_user_panel(current_user = Depends(get_current_user)):
         num_fatah = db.get_num_fatah_by_user(user_id)
         num_hamas = db.get_num_hamas_by_user(user_id)
         num_none = db.get_num_none_by_user(user_id)
+        num_uncertain = db.get_num_uncertain_by_user(user_id)
         num_remain = db.get_num_remaining_classifications(user_id)
 
     if num_classified is not None:
@@ -183,6 +184,7 @@ async def get_user_panel(current_user = Depends(get_current_user)):
                 'fatah': num_fatah,
                 'hamas': num_hamas,
                 'none': num_none,
+                'uncertain': num_uncertain,
                 'remain': num_remain}
     else:
         return {'error': 'Error getting user data'}
@@ -198,6 +200,7 @@ async def get_pro_panel():
         tot_fatah = db.get_total_fatah_classifications()
         tot_hamas = db.get_total_hamas_classifications()
         tot_none = db.get_total_none_classifications()
+        tot_uncertain = db.get_total_uncertain_classifications()
 
 
         for user in user_data:
@@ -207,6 +210,7 @@ async def get_pro_panel():
             num_fatah = db.get_num_fatah_by_user(curr_user)
             num_hamas = db.get_num_hamas_by_user(curr_user)
             num_none = db.get_num_none_by_user(curr_user)
+            num_uncertain = db.get_num_uncertain_by_user(curr_user)
 
             if num_classified is not None:
 
@@ -216,7 +220,8 @@ async def get_pro_panel():
                     "personalClassifications": num_classified,
                     "fatahClassified": num_fatah,
                     "hamasClassified": num_hamas,
-                    "noneClassified":num_none
+                    "noneClassified":num_none,
+                    "uncertainClassified": num_uncertain,
                 })
             else:
                 # Handle error case if data retrieval fails for the user
@@ -229,7 +234,8 @@ async def get_pro_panel():
             "total": num_tot,
             "total_hamas": tot_hamas,
             "total_fatah": tot_fatah,
-            "total_none": tot_none}
+            "total_none": tot_none,
+            "total_uncertain": tot_uncertain}
 
 
 @app.get("/params_list")
