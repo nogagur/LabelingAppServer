@@ -1,14 +1,13 @@
-import inspect
+from asyncio.locks import Lock
 from datetime import datetime, timedelta
+from typing import Optional, Dict
 
 from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.security import HTTPBearer
 from jose import jwt, JWTError
-from pydantic import BaseModel
-from asyncio.locks import Lock
-from typing import Optional, Dict
 from jwt.exceptions import ExpiredSignatureError, InvalidTokenError
+from pydantic import BaseModel
 
 from credentials import JWT_SECRET_KEY
 from db.access import DBAccess
@@ -22,10 +21,10 @@ lock = Lock()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # React frontend URL
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"],  # Allow all HTTP methods (GET, POST, etc.)
-    allow_headers=["*"],  # Allow all headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 ALGORITHM = "HS256"  # Algorithm used for encoding/decoding the token
@@ -40,20 +39,6 @@ def generate_token(user_id):
     token = jwt.encode(payload, JWT_SECRET_KEY, algorithm="HS256")
     return token
 
-
-#
-# def login_required(func):
-#     async def wrapper(request: Request, *args, **kwargs):
-#         # Extract the user from the token using your existing helper function.
-#         try:
-#             user = extract_user_from_token(request)
-#         except HTTPException as e:
-#             # Reraise the exception to propagate the error to the client.
-#             raise e
-#
-#         # Now pass the user's ID (or the whole user, depending on your needs)
-#         return await func(user_id=user.id, request=request, *args, **kwargs)
-#     return wrapper
 
 def extract_user_from_token(request: Request) -> Optional[dict]:
     """
@@ -152,30 +137,6 @@ async def get_video(current_user = Depends(get_current_user)):
     else:
         return {'error': 'No unclassified videos'}
     
-class SkipTweetRequest(BaseModel):
-    curr_id: str
-
-# TODO: currently no matching db function
-# @app.post("/get_skip_tweet")
-# @login_required
-# async def get_skip_tweet(passcode, request: SkipTweetRequest):
-#     curr_id = request.curr_id
-#     async with lock:
-#         db = DBAccess()
-#         if db.get_passcode(passcode).professional:
-#             tweet = db.get_different_unclassified_tweet_pro(passcode)
-#             if tweet is None:
-#                 tweet = db.get_different_unclassified_tweet(passcode, curr_id)
-#         else:
-#             tweet = db.get_different_unclassified_tweet(passcode, curr_id)
-#
-#         if tweet is not None:
-#             db.update_start(tweet, passcode)
-#             return {'id': tweet.id, 'tweeter': tweet.tweeter, 'content': tweet.content}
-#         else:
-#             tweet = db.get_video_by_id(curr_id)
-#             return {'id': tweet.id, 'tweeter': tweet.tweeter, 'content': tweet.content}
-
 
 class Classification(BaseModel):
     classification: str
@@ -273,13 +234,10 @@ async def get_pro_panel():
 
 @app.get("/params_list")
 async def params_list():
-    # We will make the list of parameters dynamic, so that we can add/remove parameters without changing the web client.
-    # Each is boolean.
-    # TODO: update features list, maybe need different logic
     return params
 
-
-if __name__ == '__main__':
-    import uvicorn
-
-    uvicorn.run(app, host="localhost", port=8000)
+#
+# if __name__ == '__main__':
+#     import uvicorn
+#
+#     uvicorn.run(app, host="localhost", port=8000)

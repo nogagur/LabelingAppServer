@@ -28,21 +28,26 @@ def insert_tiktok_data(data, pre_class):
 
         # Insert each TikTok user into the TiktokUsers table
         for record in data:
-            if "note" in record and (record["note"] == 'Profile is private' or record['note'] == 'No videos found to match the date filter'):
-                continue
+            try:
+                if "note" in record and (record["note"] == 'Profile is private' or record[
+                    'note'] == 'No videos found to match the date filter'):
+                    continue
 
-            insert_user(cur, record, pre_class)
-            insert_video(cur, record)
-            print("Finished inserting data for video:", record["id"])
+                insert_user(cur, record, pre_class)
+                insert_video(cur, record)
 
-        # Commit changes and close the connection
-        conn.commit()
+            except Exception as record_error:
+                print(f"❌ Error inserting video {record.get('id', 'UNKNOWN')}: {record_error}")
+            else:
+                conn.commit()  # ✅ Commit only if the insert was successful
+
         cur.close()
         conn.close()
         print("Data inserted successfully!")
 
-    except Exception as e:
-        print("Error inserting data:", e)
+
+    except Exception as db_error:
+        print(f"❌ Database connection error: {db_error}")
 
 def insert_hashtags(cur, hashtags):
     hashtag_ids = []
@@ -137,6 +142,15 @@ def insert_video(cur, data):
     # Insert hashtags and get their IDs
     hashtag_ids = insert_hashtags(cur, data.get("hashtags", []))
 
+    # Define AWS S3 bucket details
+    BUCKET_NAME = "tiktok-project-storage"
+    AWS_REGION = "eu-north-1"
+    VIDEO_FOLDER = "videos/downloads/"
+
+    # Generate AWS S3 URL using the video ID
+    video_id = data.get("id")
+    video_url = f"https://{BUCKET_NAME}.s3.{AWS_REGION}.amazonaws.com/{VIDEO_FOLDER}{video_id}.mp4"
+
     # Prepare video data
     video_data = {
         "id": data.get("id"),
@@ -149,7 +163,7 @@ def insert_video(cur, data):
         "duration": data.get("videoMeta", {}).get("duration"),
         "height": data.get("videoMeta", {}).get("height"),
         "width": data.get("videoMeta", {}).get("width"),
-        "video_file": data.get("videoMeta", {}).get("downloadAddr"),
+        "video_file": video_url,
         "video_thumbnail": data.get("videoMeta", {}).get("coverUrl"),
         "web_url": data.get("webVideoUrl"),
         "music_id": data.get("musicMeta", {}).get("musicId")

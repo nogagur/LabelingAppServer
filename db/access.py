@@ -407,30 +407,3 @@ class DBAccess(metaclass=Singleton):
                                         .filter(VideoClassification.classification == "None") \
                                         .scalar()
 
-    # def get_finished_classifications(self):
-    #     # Create a list to store classification data
-    #     classifications_data = []
-    #
-    #     with Session(self.engine) as session:
-    #         # Query to get unique tweet IDs with desired classifications
-    #         negative_classifications = session.query(
-    #             Classification.id,
-    #             Classification.tweet,
-    #             Classification.classification,
-    #             Classification.features,
-    #             Tweet.content
-    #         ).join(Tweet, Classification.tweet == Tweet.id).filter(Classification.classification == "Positive").distinct(Classification.tweet).all()
-    #
-    #         # Append classification data to the list
-    #         for classification in negative_classifications:
-    #
-    #             classifications_data.append({
-    #                 'id': classification.id,
-    #                 'tweet_id': classification.tweet,
-    #                 'classification': classification.classification,
-    #                 'features': classification.features,
-    #                 'tweet': classification.content
-    #             })
-    #
-    #         return classifications_data
-

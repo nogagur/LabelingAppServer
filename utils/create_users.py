@@ -1,7 +1,6 @@
-import string
 import random
+import string
 
-import bcrypt
 from db.access import DBAccess
 
 
@@ -13,8 +12,6 @@ def generate_password(length=6):
     characters = string.ascii_lowercase + string.digits  # a-z, 0-9
     return ''.join(random.choices(characters, k=length))
 
-# Example usage
-print(generate_password())
 def create_user(email):
     """
     Creates a new user and returns their raw password.
@@ -62,13 +59,19 @@ def create_multiple_users(email_list):
     return user_credentials
 
 def main():
-    # Create a single user
-    # email = "biuproject051@gmail.com"
-    # add_pro_user(email)
-    # email_list = ["a@a.com", "b@b.com", "c@c.com"]
-    # user_credentials = create_multiple_users(email_list)
-    db = DBAccess()
-    db.assign_videos_to_users()
+    with open("emails.txt", "r") as file:
+        emails = [line.strip() for line in file if line.strip()]
+
+    for email in emails:
+        password = create_user(email)
+        print(f"User {email} created with password: {password}")
+
+    with open("pro_emails.txt", "r") as file:
+        pro_emails = [line.strip() for line in file if line.strip()]
+
+    for pro in pro_emails:
+        password = add_pro_user(pro)
+        print(f"Pro user {pro} created with password: {password}")
 
 if __name__ == "__main__":
     main()
