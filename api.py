@@ -242,8 +242,8 @@ async def get_pro_panel():
 async def params_list():
     return params
 
-#
-# if __name__ == '__main__':
-#     import uvicorn
-#
-#     uvicorn.run(app, host="localhost", port=8000)
+
+if __name__ == '__main__':
+    import uvicorn
+
+    uvicorn.run(app, host="localhost", port=8000)
