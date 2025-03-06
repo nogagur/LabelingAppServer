@@ -297,8 +297,8 @@ class DBAccess(metaclass=Singleton):
         # Flatten classification results
         classifications = [c[0] for c in classifications]
 
-        # If there are two different classifications OR 'uncertain' is present OR 'irrelevant' is present
-        if len(classifications) > 1 or "Uncertain" in classifications or "Irrelevant" in classifications:
+        # If there are two different classifications OR 'uncertain' is present OR 'Broken' is present
+        if len(classifications) > 1 or "Uncertain" in classifications or "Broken" in classifications:
             # Check if a pro classification already exists
             pro_entry = session.query(VideoClassification).join(
                 ProUser, VideoClassification.classified_by == ProUser.id
@@ -375,12 +375,12 @@ class DBAccess(metaclass=Singleton):
             return session.query(VideoClassification).filter(VideoClassification.classified_by == classifier).filter(
                 VideoClassification.classification == "Uncertain").count()
 
-    # This method return the number of videos classified as irrelevant which organization, by a user.
-    def get_num_irrelevant_by_user(self, classifier):
+    # This method return the number of videos classified as Broken which organization, by a user.
+    def get_num_broken_by_user(self, classifier):
         with Session(self.engine) as session:
             return session.query(VideoClassification).filter(
                 VideoClassification.classified_by == classifier).filter(
-                VideoClassification.classification == "Irrelevant").count()
+                VideoClassification.classification == "Broken").count()
 
     # This method return the number of videos unclassified, by a user.
     def get_num_remaining_classifications(self, classifier):
@@ -424,9 +424,9 @@ class DBAccess(metaclass=Singleton):
                 .filter(VideoClassification.classification == "Uncertain") \
                 .scalar()
 
-    def get_total_irrelevant_classifications(self):
+    def get_total_broken_classifications(self):
         with Session(self.engine) as session:
             return session.query(func.count(func.distinct(VideoClassification.video_id))) \
-                .filter(VideoClassification.classification == "Irrelevant") \
+                .filter(VideoClassification.classification == "Broken") \
                 .scalar()
 
