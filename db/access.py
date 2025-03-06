@@ -297,8 +297,8 @@ class DBAccess(metaclass=Singleton):
         # Flatten classification results
         classifications = [c[0] for c in classifications]
 
-        # If there are two different classifications OR 'uncertain' is present
-        if len(classifications) > 1 or "Uncertain" in classifications:
+        # If there are two different classifications OR 'uncertain' is present OR 'irrelevant' is present
+        if len(classifications) > 1 or "Uncertain" in classifications or "Irrelevant" in classifications:
             # Check if a pro classification already exists
             pro_entry = session.query(VideoClassification).join(
                 ProUser, VideoClassification.classified_by == ProUser.id
@@ -308,7 +308,6 @@ class DBAccess(metaclass=Singleton):
             ).one_or_none()
 
             if not pro_entry:
-                # todo: maybe change it to get specific pro users
                 # Get all pro user IDs
                 pro_users = session.query(ProUser.id).order_by(ProUser.id).all()
                 pro_users = [p[0] for p in pro_users]  # Convert to list of IDs
@@ -330,7 +329,6 @@ class DBAccess(metaclass=Singleton):
                 print(f"Assigned video {video_id} to pro user {next_pro_user} for review.")
 
     def next_pro_to_assign(self, pro_users, session):
-        # todo: change if its just a list of two
         # Find the last assigned pro user
         last_pro_entry = session.query(VideoClassification.classified_by).filter(
             VideoClassification.classified_by.in_(pro_users)
