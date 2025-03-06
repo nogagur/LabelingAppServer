@@ -377,6 +377,13 @@ class DBAccess(metaclass=Singleton):
             return session.query(VideoClassification).filter(VideoClassification.classified_by == classifier).filter(
                 VideoClassification.classification == "Uncertain").count()
 
+    # This method return the number of videos classified as irrelevant which organization, by a user.
+    def get_num_irrelevant_by_user(self, classifier):
+        with Session(self.engine) as session:
+            return session.query(VideoClassification).filter(
+                VideoClassification.classified_by == classifier).filter(
+                VideoClassification.classification == "Irrelevant").count()
+
     # This method return the number of videos unclassified, by a user.
     def get_num_remaining_classifications(self, classifier):
         with Session(self.engine) as session:
@@ -417,5 +424,11 @@ class DBAccess(metaclass=Singleton):
         with Session(self.engine) as session:
             return session.query(func.count(func.distinct(VideoClassification.video_id))) \
                 .filter(VideoClassification.classification == "Uncertain") \
+                .scalar()
+
+    def get_total_irrelevant_classifications(self):
+        with Session(self.engine) as session:
+            return session.query(func.count(func.distinct(VideoClassification.video_id))) \
+                .filter(VideoClassification.classification == "Irrelevant") \
                 .scalar()
 

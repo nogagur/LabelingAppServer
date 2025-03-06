@@ -31,10 +31,10 @@ ALGORITHM = "HS256"  # Algorithm used for encoding/decoding the token
 
 
 def generate_token(user_id):
-    # Set the token expiration time
-    expire = datetime.utcnow() + timedelta(hours=3)
+    # # Set the token expiration time
+    # expire = datetime.utcnow() + timedelta(hours=3)
     # Create the payload containing the key
-    payload = {"user_id": user_id, "exp": expire}
+    payload = {"user_id": user_id}
     # Generate the JWT token
     token = jwt.encode(payload, JWT_SECRET_KEY, algorithm="HS256")
     return token
@@ -150,7 +150,7 @@ async def classify_video( classification: Classification, current_user = Depends
     db = DBAccess()
     video = db.get_video_by_id(classification.video_id)
     if video is not None:
-        if classification.classification not in ['Hamas', 'Fatah', 'None', 'Uncertain']:
+        if classification.classification not in ['Hamas', 'Fatah', 'None', 'Uncertain', 'Irrelevant']:
             return {'error': 'Invalid classification'}
         async with lock:
             result = db.classify_video(classification.video_id, user_id, classification.classification,
@@ -177,6 +177,7 @@ async def get_user_panel(current_user = Depends(get_current_user)):
         num_hamas = db.get_num_hamas_by_user(user_id)
         num_none = db.get_num_none_by_user(user_id)
         num_uncertain = db.get_num_uncertain_by_user(user_id)
+        num_irrelevant = db.get_num_irrelevant_by_user(user_id)
         num_remain = db.get_num_remaining_classifications(user_id)
 
     if num_classified is not None:
@@ -185,6 +186,7 @@ async def get_user_panel(current_user = Depends(get_current_user)):
                 'hamas': num_hamas,
                 'none': num_none,
                 'uncertain': num_uncertain,
+                'irrelevant': num_irrelevant,
                 'remain': num_remain}
     else:
         return {'error': 'Error getting user data'}
@@ -201,6 +203,7 @@ async def get_pro_panel():
         tot_hamas = db.get_total_hamas_classifications()
         tot_none = db.get_total_none_classifications()
         tot_uncertain = db.get_total_uncertain_classifications()
+        tot_irrelevant = db.get_total_irrelevant_classifications()
 
 
         for user in user_data:
@@ -211,6 +214,7 @@ async def get_pro_panel():
             num_hamas = db.get_num_hamas_by_user(curr_user)
             num_none = db.get_num_none_by_user(curr_user)
             num_uncertain = db.get_num_uncertain_by_user(curr_user)
+            num_irrelevant = db.get_num_irrelevant_by_user(curr_user)
 
             if num_classified is not None:
 
@@ -222,6 +226,7 @@ async def get_pro_panel():
                     "hamasClassified": num_hamas,
                     "noneClassified":num_none,
                     "uncertainClassified": num_uncertain,
+                    "irrelevantClassified": num_irrelevant,
                 })
             else:
                 # Handle error case if data retrieval fails for the user
@@ -235,7 +240,8 @@ async def get_pro_panel():
             "total_hamas": tot_hamas,
             "total_fatah": tot_fatah,
             "total_none": tot_none,
-            "total_uncertain": tot_uncertain}
+            "total_uncertain": tot_uncertain,
+            "total_irrelevant": tot_irrelevant,}
 
 
 @app.get("/params_list")
