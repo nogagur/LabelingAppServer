@@ -132,7 +132,8 @@ async def get_video(current_user = Depends(get_current_user)):
             'id': str(video.id),
             'uploader': username,
             'file': video.video_file,
-            'description': video.description
+            'description': video.description,
+            'web_url': video.web_url
         }
     else:
         return {'error': 'No unclassified videos'}
