@@ -364,10 +364,10 @@ class DBAccess(metaclass=Singleton):
                 VideoClassification.classification == "Fatah").count()
 
     # This method return the number of videos classified as not identified with an organization, by a user.
-    def get_num_none_by_user(self, classifier):
+    def get_num_unaffiliated_by_user(self, classifier):
         with Session(self.engine) as session:
             return session.query(VideoClassification).filter(VideoClassification.classified_by == classifier).filter(
-                VideoClassification.classification == "None").count()
+                VideoClassification.classification == "Unaffiliated").count()
 
     # This method return the number of videos classified as uncertain which organization, by a user.
     def get_num_uncertain_by_user(self, classifier):
@@ -412,10 +412,10 @@ class DBAccess(metaclass=Singleton):
                                     .filter(VideoClassification.classification == "Hamas") \
                                     .scalar()
 
-    def get_total_none_classifications(self):
+    def get_total_unaffiliated_classifications(self):
             with Session(self.engine) as session:
                 return session.query(func.count(func.distinct(VideoClassification.video_id))) \
-                                        .filter(VideoClassification.classification == "None") \
+                                        .filter(VideoClassification.classification == "Unaffiliated") \
                                         .scalar()
 
     def get_total_uncertain_classifications(self):

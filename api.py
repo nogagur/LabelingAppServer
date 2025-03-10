@@ -150,7 +150,7 @@ async def classify_video( classification: Classification, current_user = Depends
     db = DBAccess()
     video = db.get_video_by_id(classification.video_id)
     if video is not None:
-        if classification.classification not in ['Hamas', 'Fatah', 'None', 'Uncertain', 'Broken']:
+        if classification.classification not in ['Hamas', 'Fatah', 'Unaffiliated', 'Uncertain', 'Broken']:
             return {'error': 'Invalid classification'}
         async with lock:
             result = db.classify_video(classification.video_id, user_id, classification.classification,
@@ -176,7 +176,7 @@ async def get_user_panel(current_user = Depends(get_current_user)):
         num_classified = db.get_num_classifications(user_id)
         num_fatah = db.get_num_fatah_by_user(user_id)
         num_hamas = db.get_num_hamas_by_user(user_id)
-        num_none = db.get_num_none_by_user(user_id)
+        num_unaffiliated = db.get_num_unaffiliated_by_user(user_id)
         num_uncertain = db.get_num_uncertain_by_user(user_id)
         num_broken = db.get_num_broken_by_user(user_id)
         num_remain = db.get_num_remaining_classifications(user_id)
@@ -185,7 +185,7 @@ async def get_user_panel(current_user = Depends(get_current_user)):
         return {'total': num_classified,
                 'fatah': num_fatah,
                 'hamas': num_hamas,
-                'none': num_none,
+                'unaffiliated': num_unaffiliated,
                 'uncertain': num_uncertain,
                 'broken': num_broken,
                 'remain': num_remain}
@@ -202,7 +202,7 @@ async def get_pro_panel():
         num_tot = db.get_total_classifications()
         tot_fatah = db.get_total_fatah_classifications()
         tot_hamas = db.get_total_hamas_classifications()
-        tot_none = db.get_total_none_classifications()
+        tot_unaffiliated = db.get_total_unaffiliated_classifications()
         tot_uncertain = db.get_total_uncertain_classifications()
         tot_broken = db.get_total_broken_classifications()
 
@@ -213,7 +213,7 @@ async def get_pro_panel():
             num_classified = db.get_num_classifications(curr_user)
             num_fatah = db.get_num_fatah_by_user(curr_user)
             num_hamas = db.get_num_hamas_by_user(curr_user)
-            num_none = db.get_num_none_by_user(curr_user)
+            num_unaffiliated = db.get_num_unaffiliated_by_user(curr_user)
             num_uncertain = db.get_num_uncertain_by_user(curr_user)
             num_broken = db.get_num_broken_by_user(curr_user)
 
@@ -225,7 +225,7 @@ async def get_pro_panel():
                     "personalClassifications": num_classified,
                     "fatahClassified": num_fatah,
                     "hamasClassified": num_hamas,
-                    "noneClassified":num_none,
+                    "unaffiliatedClassified":num_unaffiliated,
                     "uncertainClassified": num_uncertain,
                     "brokenClassified": num_broken,
                 })
@@ -240,7 +240,7 @@ async def get_pro_panel():
             "total": num_tot,
             "total_hamas": tot_hamas,
             "total_fatah": tot_fatah,
-            "total_none": tot_none,
+            "total_unaffiliated": tot_unaffiliated,
             "total_uncertain": tot_uncertain,
             "total_broken": tot_broken,}
 

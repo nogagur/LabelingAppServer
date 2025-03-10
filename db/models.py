@@ -16,13 +16,6 @@ class User(Base):
     def __repr__(self):
         return f"<User(id={self.id}, email={self.email})>"
     
-    
-    # def is_valid(self, num_classifications):
-    #     current_date = datetime.now().date()
-    #     return (self.valid_until > current_date and
-    #             self.activated and
-    #             (self.max_classifications is None or num_classifications < self.max_classifications))
-
 # Represents professional users (subclass of Users)
 class ProUser(Base):
     __tablename__ = 'prousers'
@@ -130,10 +123,10 @@ class VideoMetaHashtag(Base):
 class Music(Base):
     __tablename__ = 'music'
 
-    id = Column(Integer, primary_key=True)                  # Primary key
-    name = Column(String(150))                              # Music name
-    author = Column(String(100))                            # Music author
-    play_link = Column(Text)                                # Music play URL
+    id = Column(Integer, primary_key=True)
+    name = Column(String(150))
+    author = Column(String(100))
+    play_link = Column(Text)
 
     def __repr__(self):
         return f"<Music(id={self.id}, name={self.name})>"
