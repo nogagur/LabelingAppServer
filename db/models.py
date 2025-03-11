@@ -135,3 +135,4 @@ class BrokenVideos(Base):
     __tablename__ = "broken_videos"
 
     video_id = Column(BigInteger, ForeignKey('videosmeta.id'), primary_key=True)
+    classified_by = Column(BigInteger, ForeignKey('users.id'), primary_key=True)

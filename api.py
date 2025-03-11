@@ -179,7 +179,6 @@ async def get_user_panel(current_user = Depends(get_current_user)):
         num_hamas = db.get_num_hamas_by_user(user_id)
         num_unaffiliated = db.get_num_unaffiliated_by_user(user_id)
         num_uncertain = db.get_num_uncertain_by_user(user_id)
-        num_broken = db.get_num_broken_by_user(user_id)
         num_remain = db.get_num_remaining_classifications(user_id)
 
     if num_classified is not None:
@@ -188,7 +187,6 @@ async def get_user_panel(current_user = Depends(get_current_user)):
                 'hamas': num_hamas,
                 'unaffiliated': num_unaffiliated,
                 'uncertain': num_uncertain,
-                'broken': num_broken,
                 'remain': num_remain}
     else:
         return {'error': 'Error getting user data'}
@@ -205,7 +203,6 @@ async def get_pro_panel():
         tot_hamas = db.get_total_hamas_classifications()
         tot_unaffiliated = db.get_total_unaffiliated_classifications()
         tot_uncertain = db.get_total_uncertain_classifications()
-        tot_broken = db.get_total_broken_classifications()
 
 
         for user in user_data:
@@ -216,7 +213,6 @@ async def get_pro_panel():
             num_hamas = db.get_num_hamas_by_user(curr_user)
             num_unaffiliated = db.get_num_unaffiliated_by_user(curr_user)
             num_uncertain = db.get_num_uncertain_by_user(curr_user)
-            num_broken = db.get_num_broken_by_user(curr_user)
 
             if num_classified is not None:
 
@@ -228,7 +224,6 @@ async def get_pro_panel():
                     "hamasClassified": num_hamas,
                     "unaffiliatedClassified":num_unaffiliated,
                     "uncertainClassified": num_uncertain,
-                    "brokenClassified": num_broken,
                 })
             else:
                 # Handle error case if data retrieval fails for the user
@@ -242,8 +237,7 @@ async def get_pro_panel():
             "total_hamas": tot_hamas,
             "total_fatah": tot_fatah,
             "total_unaffiliated": tot_unaffiliated,
-            "total_uncertain": tot_uncertain,
-            "total_broken": tot_broken,}
+            "total_uncertain": tot_uncertain}
 
 
 @app.get("/params_list")

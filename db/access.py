@@ -246,10 +246,14 @@ class DBAccess(metaclass=Singleton):
 
             # If classified as 'broken', move the video to broken_videos and delete classification entry
             if classification.lower() == "broken":
-                # Check if video is already in broken_videos to avoid duplicates
-                broken_entry = session.query(BrokenVideos).filter(BrokenVideos.video_id == video_id).one_or_none()
+                # Check if this user has already classified this video as broken
+                broken_entry = session.query(BrokenVideos).filter(
+                    BrokenVideos.video_id == video_id,
+                    BrokenVideos.classified_by == user_id
+                ).one_or_none()
+
                 if not broken_entry:
-                    session.add(BrokenVideos(video_id=video_id))  # Add to broken_videos table
+                    session.add(BrokenVideos(video_id=video_id, classified_by=user_id))  # Insert into broken_videos
 
                 # Delete classification entry from video_classification
                 session.delete(classification_entry)
@@ -386,13 +390,6 @@ class DBAccess(metaclass=Singleton):
             return session.query(VideoClassification).filter(VideoClassification.classified_by == classifier).filter(
                 VideoClassification.classification == "Uncertain").count()
 
-    # This method return the number of videos classified as Broken which organization, by a user.
-    def get_num_broken_by_user(self, classifier):
-        with Session(self.engine) as session:
-            return session.query(VideoClassification).filter(
-                VideoClassification.classified_by == classifier).filter(
-                VideoClassification.classification == "Broken").count()
-
     # This method return the number of videos unclassified, by a user.
     def get_num_remaining_classifications(self, classifier):
         with Session(self.engine) as session:
@@ -435,9 +432,4 @@ class DBAccess(metaclass=Singleton):
                 .filter(VideoClassification.classification == "Uncertain") \
                 .scalar()
 
-    def get_total_broken_classifications(self):
-        with Session(self.engine) as session:
-            return session.query(func.count(func.distinct(VideoClassification.video_id))) \
-                .filter(VideoClassification.classification == "Broken") \
-                .scalar()
 
