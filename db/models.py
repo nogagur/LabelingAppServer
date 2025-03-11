@@ -131,3 +131,7 @@ class Music(Base):
     def __repr__(self):
         return f"<Music(id={self.id}, name={self.name})>"
 
+class BrokenVideos(Base):
+    __tablename__ = "broken_videos"
+
+    video_id = Column(BigInteger, ForeignKey('videosmeta.id'), primary_key=True)

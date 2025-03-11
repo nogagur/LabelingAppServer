@@ -226,6 +226,7 @@ class DBAccess(metaclass=Singleton):
         """
         Updates an existing 'N/A' classification record with the user's classification.
         Also saves selected features and checks if a pro review is needed.
+        If classified as 'broken', move the video to broken_videos and remove its classification entry.
         """
         with Session(self.engine) as session:
             # Ensure the video exists
@@ -243,19 +244,29 @@ class DBAccess(metaclass=Singleton):
             if not classification_entry:
                 raise ValueError(f"User {user_id} does not have an open classification for Video {video_id}.")
 
-            # Update classification from 'N/A' to the user's choice
-            classification_entry.classification = classification
+            # If classified as 'broken', move the video to broken_videos and delete classification entry
+            if classification.lower() == "broken":
+                # Check if video is already in broken_videos to avoid duplicates
+                broken_entry = session.query(BrokenVideos).filter(BrokenVideos.video_id == video_id).one_or_none()
+                if not broken_entry:
+                    session.add(BrokenVideos(video_id=video_id))  # Add to broken_videos table
 
-            # Save selected features in VideosClassification_Features
-            if features:
-                self.add_classification_features(classification_entry.id, features, session)
+                # Delete classification entry from video_classification
+                session.delete(classification_entry)
+            else:
+                # Otherwise, update classification from 'N/A' to the user's choice
+                classification_entry.classification = classification
 
-            # Detect if a pro user is needed due to conflict or "uncertain" classification
-            if not self.is_pro_user(user_id):
-                self.check_if_pro_needed(session, video_id)
+                # Save selected features in VideosClassification_Features
+                if features:
+                    self.add_classification_features(classification_entry.id, features, session)
+
+                # Detect if a pro user is needed due to conflict or "uncertain" classification
+                if not self.is_pro_user(user_id):
+                    self.check_if_pro_needed(session, video_id)
 
             session.commit()
-            return classification_entry
+            return None if classification.lower() == "broken" else classification_entry
 
     def is_pro_user(self, user_id):
         with Session(self.engine) as session:
@@ -297,8 +308,8 @@ class DBAccess(metaclass=Singleton):
         # Flatten classification results
         classifications = [c[0] for c in classifications]
 
-        # If there are two different classifications OR 'uncertain' is present OR 'Broken' is present
-        if len(classifications) > 1 or "Uncertain" in classifications or "Broken" in classifications:
+        # If there are two different classifications OR 'uncertain' is present
+        if len(classifications) > 1 or "Uncertain" in classifications:
             # Check if a pro classification already exists
             pro_entry = session.query(VideoClassification).join(
                 ProUser, VideoClassification.classified_by == ProUser.id
