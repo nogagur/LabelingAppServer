@@ -22,7 +22,7 @@ This is the backend server for the application, built using **FastAPI** with **U
 Root files:
 * Procfile – Defines process types for Heroku deployment.
 * api.py – Main backend API handling requests.
-* credentials.py – Manages access credentials.
+* credentials.py – Manages access credentials, including database connection address.
 * requirements.txt – Lists Python dependencies.
 
 
