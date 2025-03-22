@@ -43,6 +43,7 @@ class VideoClassification(Base):
     video_id = Column(BigInteger, ForeignKey('videosmeta.id'))
     classification = Column(String(50), nullable=False) # Classification result
     classified_by = Column(Integer, ForeignKey('users.id'))
+    duration = Column(Integer) # Time it took to classify the video in seconds
 
     def __repr__(self):
         return f"<VideoClassification(id={self.id}, video_id={self.video_id}, classification={self.classification})>"
