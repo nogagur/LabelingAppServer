@@ -143,6 +143,7 @@ class Classification(BaseModel):
     classification: str
     video_id: str
     features: Dict[str, bool]
+    duration: int
 
 
 @app.post("/classify_video")
@@ -155,7 +156,7 @@ async def classify_video( classification: Classification, current_user = Depends
             return {'error': 'Invalid classification'}
         async with lock:
             result = db.classify_video(classification.video_id, user_id, classification.classification,
-                                       classification.features)
+                                       classification.features, classification.duration)
         return {'classified': result}
     else:
         return {'error': 'No such video'}
@@ -203,6 +204,7 @@ async def get_pro_panel():
         tot_hamas = db.get_total_hamas_classifications()
         tot_unaffiliated = db.get_total_unaffiliated_classifications()
         tot_uncertain = db.get_total_uncertain_classifications()
+        tot_duration = db.get_total_avg_duration()
 
 
         for user in user_data:
@@ -213,6 +215,7 @@ async def get_pro_panel():
             num_hamas = db.get_num_hamas_by_user(curr_user)
             num_unaffiliated = db.get_num_unaffiliated_by_user(curr_user)
             num_uncertain = db.get_num_uncertain_by_user(curr_user)
+            avg_duration = db.get_avg_duration_by_user(curr_user)
 
             if num_classified is not None:
 
@@ -224,6 +227,7 @@ async def get_pro_panel():
                     "hamasClassified": num_hamas,
                     "unaffiliatedClassified":num_unaffiliated,
                     "uncertainClassified": num_uncertain,
+                    "avgDuration": round(avg_duration, 2) if avg_duration is not None else "N/A"
                 })
             else:
                 # Handle error case if data retrieval fails for the user
@@ -237,7 +241,8 @@ async def get_pro_panel():
             "total_hamas": tot_hamas,
             "total_fatah": tot_fatah,
             "total_unaffiliated": tot_unaffiliated,
-            "total_uncertain": tot_uncertain}
+            "total_uncertain": tot_uncertain,
+            "total_duration": round(tot_duration, 2) if tot_duration is not None else "N/A"}
 
 
 @app.get("/params_list")

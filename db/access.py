@@ -222,7 +222,7 @@ class DBAccess(metaclass=Singleton):
             print(f"Assigned videos. Each user received up to {max_videos_per_user} videos.")
             return user_video_map  # Optional debug output
 
-    def classify_video(self, video_id, user_id, classification, features):
+    def classify_video(self, video_id, user_id, classification, features, duration):
         """
         Updates an existing 'N/A' classification record with the user's classification.
         Also saves selected features and checks if a pro review is needed.
@@ -260,6 +260,7 @@ class DBAccess(metaclass=Singleton):
             else:
                 # Otherwise, update classification from 'N/A' to the user's choice
                 classification_entry.classification = classification
+                classification_entry.duration = duration
 
                 # Save selected features in VideosClassification_Features
                 if features:
@@ -402,6 +403,15 @@ class DBAccess(metaclass=Singleton):
             return session.query(VideoClassification).filter(VideoClassification.classified_by == classifier).filter(
                 VideoClassification.classification != "N/A").count()
 
+    # This method returns the average classification duration for a user, ignoring nulls.
+    def get_avg_duration_by_user(self, classifier):
+        with Session(self.engine) as session:
+            avg_duration = session.query(func.avg(VideoClassification.duration)) \
+                .filter(VideoClassification.classified_by == classifier) \
+                .filter(VideoClassification.duration != None) \
+                .scalar()
+            return avg_duration
+
     def get_total_classifications(self):
         with Session(self.engine) as session:
             return session.query(func.count(func.distinct(VideoClassification.video_id))) \
@@ -430,6 +440,12 @@ class DBAccess(metaclass=Singleton):
         with Session(self.engine) as session:
             return session.query(func.count(func.distinct(VideoClassification.video_id))) \
                 .filter(VideoClassification.classification == "Uncertain") \
+                .scalar()
+
+    def get_total_avg_duration(self):
+        with Session(self.engine) as session:
+            return session.query(func.avg(VideoClassification.duration)) \
+                .filter(VideoClassification.duration != None) \
                 .scalar()
 
 
