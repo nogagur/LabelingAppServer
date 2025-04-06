@@ -222,6 +222,73 @@ class DBAccess(metaclass=Singleton):
             print(f"Assigned videos. Each user received up to {max_videos_per_user} videos.")
             return user_video_map  # Optional debug output
 
+    def assign_videos_prioritizing_hamas(self, max_videos_per_user=200, prioritized_video_limit=500):
+        """
+        Assigns videos to non-pro users by first prioritizing videos from 'hamas' users, and then randomly.
+        Each user receives up to `max_videos_per_user` videos total.
+        """
+
+        with Session(self.engine) as session:
+            # Step 1: Get prioritized videos (from users pre-classified as 'hamas' and not yet classified)
+            prioritized_videos = session.query(VideoMeta.id).join(TiktokUser).filter(
+                TiktokUser.pre_classification == 'hamas',
+                ~VideoMeta.id.in_(session.query(VideoClassification.video_id))
+            ).limit(prioritized_video_limit).all()
+            prioritized_videos = [v[0] for v in prioritized_videos]
+
+            # Step 2: Get all other videos that are not yet assigned and not part of the prioritized list
+            all_other_videos = session.query(VideoMeta.id).filter(
+                ~VideoMeta.id.in_(session.query(VideoClassification.video_id)),  # Exclude already classified
+                ~VideoMeta.id.in_(prioritized_videos)  # Exclude already selected prioritized ones
+            ).all()
+            all_other_videos = [v[0] for v in all_other_videos]
+            random.shuffle(all_other_videos)
+
+            # Step 3: Get all non-pro users
+            non_pro_users = session.query(User.id).filter(
+                ~User.id.in_(session.query(ProUser.id))
+            ).all()
+            non_pro_users = [u[0] for u in non_pro_users]
+            random.shuffle(non_pro_users)
+
+            # Step 4: Track user assignments
+            user_video_count = {user: 0 for user in non_pro_users}
+            user_video_map = {user: [] for user in non_pro_users}
+
+            def assign_videos_from_list(video_list):
+                for video_id in video_list:
+                    assigned_count = session.query(VideoClassification).filter(
+                        VideoClassification.video_id == video_id
+                    ).count()
+                    if assigned_count >= 2:
+                        continue
+
+                    eligible_users = [u for u in non_pro_users if user_video_count[u] < max_videos_per_user]
+                    if not eligible_users:
+                        break
+
+                    selected_users = random.sample(eligible_users, min(2 - assigned_count, len(eligible_users)))
+
+                    for user_id in selected_users:
+                        if user_video_count[user_id] >= max_videos_per_user:
+                            continue
+
+                        session.add(VideoClassification(
+                            video_id=video_id, classified_by=user_id, classification="N/A"
+                        ))
+                        user_video_map[user_id].append(video_id)
+                        user_video_count[user_id] += 1
+
+            # Step 5: Assign prioritized videos first
+            assign_videos_from_list(prioritized_videos)
+
+            # Step 6: Assign remaining videos until each user reaches the max limit
+            assign_videos_from_list(all_other_videos)
+
+            session.commit()
+            print(f"Assigned videos with priority. Each user received up to {max_videos_per_user} videos.")
+            return user_video_map
+
     def classify_video(self, video_id, user_id, classification, features, duration):
         """
         Updates an existing 'N/A' classification record with the user's classification.
