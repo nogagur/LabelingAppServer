@@ -2,9 +2,9 @@ import random
 import re
 from datetime import datetime, timedelta
 from secrets import token_urlsafe
-from sqlalchemy import Engine, update, func, desc
+from sqlalchemy import Engine, update, func, desc, case
 from sqlalchemy import create_engine
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from credentials import *
 from db.models import *
@@ -289,6 +289,73 @@ class DBAccess(metaclass=Singleton):
             print(f"Assigned videos with priority. Each user received up to {max_videos_per_user} videos.")
             return user_video_map
 
+    def assign_remaining_hamas_videos(self, exclude_user_ids=None):
+        """
+        Assigns all remaining 'hamas' videos (not yet classified) evenly among non-pro users,
+        excluding any user IDs in `exclude_user_ids`.
+
+        Each video is assigned to exactly TWO different users.
+        """
+
+        if exclude_user_ids is None:
+            exclude_user_ids = []
+
+        with Session(self.engine) as session:
+            # Step 1: Get remaining 'hamas' videos (not yet classified)
+            hamas_videos = session.query(VideoMeta.id).join(TiktokUser).filter(
+                TiktokUser.pre_classification == 'hamas',
+                ~VideoMeta.id.in_(session.query(VideoClassification.video_id))
+            ).all()
+            hamas_videos = [v[0] for v in hamas_videos]
+            random.shuffle(hamas_videos)
+
+            # Step 2: Get eligible non-pro users, excluding specified ones
+            non_pro_users = session.query(User.id).filter(
+                ~User.id.in_(session.query(ProUser.id)),
+                ~User.id.in_(exclude_user_ids)
+            ).all()
+            non_pro_users = [u[0] for u in non_pro_users]
+            random.shuffle(non_pro_users)
+
+            if len(non_pro_users) < 2:
+                print("Not enough users to assign each video to two users.")
+                return {}
+
+            # Step 3: Prepare user assignment map
+            user_video_map = {user: [] for user in non_pro_users}
+            user_count = len(non_pro_users)
+
+            # Step 4: Assign each video to two different users
+            for idx, video_id in enumerate(hamas_videos):
+                # Pick two different users using round-robin
+                first_user = non_pro_users[(2 * idx) % user_count]
+                second_user = non_pro_users[(2 * idx + 1) % user_count]
+
+                # Assign to first user
+                session.add(VideoClassification(
+                    video_id=video_id,
+                    classified_by=first_user,
+                    classification="N/A"
+                ))
+                user_video_map[first_user].append(video_id)
+
+                # Assign to second user
+                session.add(VideoClassification(
+                    video_id=video_id,
+                    classified_by=second_user,
+                    classification="N/A"
+                ))
+                user_video_map[second_user].append(video_id)
+
+            session.commit()
+            print(
+                f"Evenly assigned {len(hamas_videos)} Hamas videos (each to two users) among {len(non_pro_users)} users (excluding {exclude_user_ids}).")
+            print("\nAssignment summary:")
+            for user_id, videos in user_video_map.items():
+                print(f"User {user_id}: {len(videos)} videos")
+
+            return user_video_map
+
     def classify_video(self, video_id, user_id, classification, features, duration):
         """
         Updates an existing 'N/A' classification record with the user's classification.
@@ -516,3 +583,45 @@ class DBAccess(metaclass=Singleton):
                 .scalar()
 
 
+    def get_final_classifications_with_features(self):
+        with Session(self.engine) as session:
+            # Define priority: pro users first
+            priority_case = case(
+                (VideoClassification.classified_by.in_([24, 25]), 0),
+                else_=1
+            ).label("priority")
+
+            # Subquery: all classifications with ranking
+            ranked = session.query(
+                VideoClassification.id.label("classification_id"),
+                VideoClassification.video_id,
+                VideoClassification.classification,
+                priority_case
+            ).subquery()
+
+            # Subquery: final classification per video (pro preferred)
+            final_classification_sub = (
+                session.query(ranked.c.classification_id, ranked.c.video_id, ranked.c.classification)
+                .distinct(ranked.c.video_id)
+                .order_by(ranked.c.video_id, ranked.c.priority)
+                .subquery()
+            )
+
+            # Join to features
+            vcf_alias = aliased(VideosClassificationFeature)
+            f_alias = aliased(Feature)
+
+            results = (
+                session.query(
+                    final_classification_sub.c.video_id,
+                    final_classification_sub.c.classification.label("final_classification"),
+                    func.coalesce(func.string_agg(f_alias.title, ', '), '').label("features")
+                )
+                .outerjoin(vcf_alias, vcf_alias.classification_id == final_classification_sub.c.classification_id)
+                .outerjoin(f_alias, f_alias.id == vcf_alias.feature_id)
+                .group_by(final_classification_sub.c.video_id, final_classification_sub.c.classification)
+                .order_by(final_classification_sub.c.video_id)
+                .all()
+            )
+
+            return results
