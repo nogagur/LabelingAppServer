@@ -4,15 +4,22 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-def export_summary_to_csv(output_path="classification_summary.csv"):
+def export_summary_to_csv(output_path="final_classification/classification_summary.csv"):
     db = access.DBAccess()
-    rows = db.get_final_classifications_with_features()
+    rows = db.get_final_classifications_with_metadata()
 
     with open(output_path, mode='w', newline='', encoding='utf-8') as csvfile:
         writer = csv.writer(csvfile)
-        writer.writerow(["video_id", "final_classification", "features"])
+        writer.writerow(["video_id", "final_classification", "features", "username","description","music_id"])
         for row in rows:
-            writer.writerow([row.video_id, row.final_classification, row.features])
+            writer.writerow([
+                row.video_id,
+                row.final_classification,
+                row.features,
+                row.username,
+                row.description,
+                row.music_id
+            ])
 
     print(f"Exported to {output_path}")
 
@@ -33,7 +40,7 @@ def plot_bar_chart(df):
                     fontsize=10)
 
     plt.tight_layout()
-    plt.savefig("classification_bar_chart.png")
+    plt.savefig("final_classification/classification_bar_chart.png")
     plt.close()
 
 def plot_feature_distribution_for_classification(df, classification_label, output_path=None):
@@ -78,11 +85,70 @@ def plot_feature_distribution_for_classification(df, classification_label, outpu
 
     plt.close()
 
+def get_users_classification_map():
+    db = access.DBAccess()
+    user_map, user_totals, total_map = db.get_classification_map_by_user()
+
+    # Convert to DataFrame
+    class_labels = sorted({cls for counts in user_map.values() for cls in counts})
+
+    data = []
+    total_class_counts = {cls: 0 for cls in class_labels}
+    grand_total = sum(user_totals.values())
+
+    for i, (username, counts) in enumerate(user_map.items()):
+        row = {'User': f'User {i + 1}'}
+        total = user_totals[username]
+        for cls in class_labels:
+            count = counts.get(cls, 0)
+            row[cls] = count
+            total_class_counts[cls] += count
+        row['Total'] = total
+        data.append(row)
+
+    avg_row = {'User': 'Average'}
+    for cls in class_labels:
+        avg_row[cls] = total_class_counts[cls]
+    avg_row['Total'] = grand_total
+    data.append(avg_row)
+
+    df = pd.DataFrame(data)
+
+    # Normalize for percentages (used for bar height)
+    df_percent = df.copy()
+    for cls in class_labels:
+        df_percent[cls] = df_percent[cls] / df_percent['Total'] * 100
+
+    # Plot
+    fig, ax = plt.subplots(figsize=(12, 6))
+    bottom = [0] * len(df)
+
+    for cls in class_labels:
+        values = df_percent[cls]
+        bar = ax.bar(df['User'], values, bottom=bottom, label=cls)
+
+        # Add count and percent labels
+        for i, (val, percent) in enumerate(zip(df[cls], values)):
+            if val > 0:
+                ax.text(i, bottom[i] + values[i] / 2,
+                        f"{val} ({percent:.1f}%)",
+                        ha='center', va='center', fontsize=8, color='white')
+        bottom = [b + p for b, p in zip(bottom, values)]
+
+    ax.set_ylabel("Percentage")
+    ax.set_title("Classification Distribution per User")
+    ax.legend(title="Classification", loc='lower center',bbox_to_anchor=(0.5, -0.3),ncol=len(class_labels))
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    plt.savefig("final_classification/classification_map_users.png")
+    plt.close()
+
 
 if __name__ == "__main__":
     export_summary_to_csv()
     # Load the CSV
-    df = pd.read_csv("classification_summary.csv")
+    df = pd.read_csv("final_classification/classification_summary.csv")
     plot_bar_chart(df)
-    plot_feature_distribution_for_classification(df, "Hamas", output_path="features_hamas.png")
-    plot_feature_distribution_for_classification(df, "Fatah", output_path="features_fatah.png")
+    plot_feature_distribution_for_classification(df, "Hamas", output_path="final_classification/features_hamas.png")
+    plot_feature_distribution_for_classification(df, "Fatah", output_path="final_classification/features_fatah.png")
+    get_users_classification_map()

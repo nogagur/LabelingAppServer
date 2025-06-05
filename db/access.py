@@ -582,8 +582,7 @@ class DBAccess(metaclass=Singleton):
                 .filter(VideoClassification.duration != None) \
                 .scalar()
 
-
-    def get_final_classifications_with_features(self):
+    def get_final_classifications_with_metadata(self):
         with Session(self.engine) as session:
             # Define priority: pro users first
             priority_case = case(
@@ -591,7 +590,7 @@ class DBAccess(metaclass=Singleton):
                 else_=1
             ).label("priority")
 
-            # Subquery: all classifications with ranking
+            # Subquery: all classifications with priority
             ranked = session.query(
                 VideoClassification.id.label("classification_id"),
                 VideoClassification.video_id,
@@ -601,27 +600,78 @@ class DBAccess(metaclass=Singleton):
 
             # Subquery: final classification per video (pro preferred)
             final_classification_sub = (
-                session.query(ranked.c.classification_id, ranked.c.video_id, ranked.c.classification)
+                session.query(
+                    ranked.c.classification_id,
+                    ranked.c.video_id,
+                    ranked.c.classification
+                )
                 .distinct(ranked.c.video_id)
                 .order_by(ranked.c.video_id, ranked.c.priority)
                 .subquery()
             )
 
-            # Join to features
+            # Aliases
             vcf_alias = aliased(VideosClassificationFeature)
             f_alias = aliased(Feature)
+            v_alias = aliased(VideoMeta)
+            u_alias = aliased(TiktokUser)
 
+            # Final query with joins to features, videos, and users
             results = (
                 session.query(
                     final_classification_sub.c.video_id,
                     final_classification_sub.c.classification.label("final_classification"),
-                    func.coalesce(func.string_agg(f_alias.title, ', '), '').label("features")
+                    func.coalesce(func.string_agg(f_alias.title, ', '), '').label("features"),
+                    v_alias.music_id,
+                    u_alias.username,
+                    v_alias.description
                 )
                 .outerjoin(vcf_alias, vcf_alias.classification_id == final_classification_sub.c.classification_id)
                 .outerjoin(f_alias, f_alias.id == vcf_alias.feature_id)
-                .group_by(final_classification_sub.c.video_id, final_classification_sub.c.classification)
+                .join(v_alias, v_alias.id == final_classification_sub.c.video_id)
+                .join(u_alias, u_alias.id == v_alias.user_id)
+                .group_by(
+                    final_classification_sub.c.video_id,
+                    final_classification_sub.c.classification,
+                    v_alias.music_id,
+                    u_alias.username,
+                    v_alias.description
+                )
                 .order_by(final_classification_sub.c.video_id)
                 .all()
             )
 
             return results
+
+    def get_classification_map_by_user(self):
+        with Session(self.engine) as session:
+            # Get counts per user and classification
+            rows = (
+                session.query(
+                    User.id,
+                    VideoClassification.classified_by,
+                    VideoClassification.classification,
+                    func.count().label("count")
+                )
+                .join(User, User.id == VideoClassification.classified_by)
+                .filter(~VideoClassification.classified_by.in_([24, 25]))  # exclude pro users
+                .group_by(User.id, VideoClassification.classified_by, VideoClassification.classification)
+                .all()
+            )
+
+            from collections import defaultdict
+
+            user_map = defaultdict(lambda: defaultdict(int))
+            total_map = defaultdict(int)
+            user_totals = defaultdict(int)
+
+            for row in rows:
+                user_id = row.id
+                cls = row.classification
+                cnt = row.count
+
+                user_map[user_id][cls] += cnt
+                user_totals[user_id] += cnt
+                total_map[cls] += cnt
+
+            return user_map, user_totals, total_map
